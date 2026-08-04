@@ -4,7 +4,7 @@ Only maintainer publishes releases.
 
 ## 1. Prerequisites
 
-- npm account owns `@arro000` scope/name and has 2FA enabled.
+- npm account owns `@andreaarrighi` scope/name and has 2FA enabled.
 - GitHub repository is public at `arro000/pi-meat`.
 - `main` branch and `v*` tags are protected with repository rulesets.
 - GitHub `npm` environment exists with required reviewer/tag restrictions.
@@ -18,7 +18,7 @@ Align GitHub About metadata before first release:
 ```bash
 gh repo edit arro000/pi-meat \
   --description "Navigable reading diffs for Pi, powered by Meat and your existing Pi model." \
-  --homepage "https://pi.dev/packages/@arro000/pi-meat" \
+  --homepage "https://pi.dev/packages/@andreaarrighi/pi-meat" \
   --add-topic pi-package --add-topic pi-extension --add-topic code-review --add-topic git-diff
 ```
 
@@ -43,7 +43,7 @@ npm run release:check
 
 Trusted publisher settings are normally configured on existing npm package. For first publish:
 
-1. Create narrowly scoped granular npm token permitted to publish `@arro000/pi-meat` with required 2FA policy.
+1. Create narrowly scoped granular npm token permitted to publish `@andreaarrighi/pi-meat` with required 2FA policy.
 2. Add it temporarily as GitHub Actions secret `NPM_TOKEN`.
 3. Push protected version tag matching package version, e.g. `v0.1.0`.
 4. Release workflow publishes public package with provenance.
@@ -70,17 +70,17 @@ git push origin main vX.Y.Z
 ## 5. Verify npm and Pi catalog
 
 ```bash
-npm view @arro000/pi-meat name version keywords pi repository --json
-pi -e npm:@arro000/pi-meat@X.Y.Z
-pi install npm:@arro000/pi-meat@X.Y.Z
+npm view @andreaarrighi/pi-meat name version keywords pi repository --json
+pi -e npm:@andreaarrighi/pi-meat@X.Y.Z
+pi install npm:@andreaarrighi/pi-meat@X.Y.Z
 ```
 
 Check:
 
-- <https://www.npmjs.com/package/@arro000/pi-meat>
+- <https://www.npmjs.com/package/@andreaarrighi/pi-meat>
 - provenance/source metadata on npm;
-- <https://pi.dev/packages/@arro000/pi-meat>
-- <https://pi.dev/packages?name=%40arro000%2Fpi-meat>
+- <https://pi.dev/packages/@andreaarrighi/pi-meat>
+- <https://pi.dev/packages?name=%40andreaarrighi%2Fpi-meat>
 
 Pi catalog discovers npm packages tagged `pi-package`; no manual submission is documented. Indexing has no published SLA and may lag. If absent after 24–48 hours, confirm npm visibility and keyword search first, then report reproducible catalog indexing issue upstream.
 

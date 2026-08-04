@@ -7,7 +7,7 @@
 Navigable reading diffs for [Pi](https://pi.dev), powered by [Meat](https://meat.dev) and model subscription already used in Pi.
 
 [![CI](https://github.com/arro000/pi-meat/actions/workflows/ci.yml/badge.svg)](https://github.com/arro000/pi-meat/actions/workflows/ci.yml)
-[![npm](https://img.shields.io/npm/v/%40arro000%2Fpi-meat)](https://www.npmjs.com/package/@arro000/pi-meat)
+[![npm](https://img.shields.io/npm/v/%40andreaarrighi%2Fpi-meat)](https://www.npmjs.com/package/@andreaarrighi/pi-meat)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
 ![pi-meat preview](assets/pi-meat-preview.png)
@@ -44,13 +44,13 @@ Current npm package ships bridge source and falls back to `go run`; prebuilt hel
 From npm (recommended after `0.1.0` publication):
 
 ```bash
-pi install npm:@arro000/pi-meat
+pi install npm:@andreaarrighi/pi-meat
 ```
 
 Pin exact release:
 
 ```bash
-pi install npm:@arro000/pi-meat@0.1.0
+pi install npm:@andreaarrighi/pi-meat@0.1.0
 ```
 
 Install tagged Git source:
@@ -62,7 +62,7 @@ pi install git:github.com/arro000/pi-meat@v0.1.0
 Try without persistent install:
 
 ```bash
-pi -e npm:@arro000/pi-meat
+pi -e npm:@andreaarrighi/pi-meat
 ```
 
 Packages execute with full user permissions. Review source and [security policy](SECURITY.md) before installation.
@@ -149,9 +149,9 @@ Contributions: [CONTRIBUTING.md](CONTRIBUTING.md) · Support: [SUPPORT.md](SUPPO
 
 ## Publishing and Pi catalog
 
-Package publishes as [`@arro000/pi-meat`](https://www.npmjs.com/package/@arro000/pi-meat) with npm provenance. Pi catalog automatically discovers public npm packages tagged `pi-package`; no manual submission is documented. Catalog indexing has no published SLA.
+Package publishes as [`@andreaarrighi/pi-meat`](https://www.npmjs.com/package/@andreaarrighi/pi-meat) with npm provenance. Pi catalog automatically discovers public npm packages tagged `pi-package`; no manual submission is documented. Catalog indexing has no published SLA.
 
-After release, verify [package page](https://pi.dev/packages/@arro000/pi-meat). Full maintainer procedure: [docs/RELEASING.md](docs/RELEASING.md).
+After release, verify [package page](https://pi.dev/packages/@andreaarrighi/pi-meat). Full maintainer procedure: [docs/RELEASING.md](docs/RELEASING.md).
 
 ## Naming and attribution
 

@@ -55,11 +55,16 @@ try {
 	if (installed.error) throw installed.error;
 	if (installed.status !== 0)
 		throw new Error(installed.stderr || "tarball install failed");
-	const packageRoot = join(temporary, "node_modules", "@arro000", "pi-meat");
+	const packageRoot = join(
+		temporary,
+		"node_modules",
+		"@andreaarrighi",
+		"pi-meat",
+	);
 	const manifest = JSON.parse(
 		readFileSync(join(packageRoot, "package.json"), "utf8"),
 	);
-	if (manifest.name !== "@arro000/pi-meat")
+	if (manifest.name !== "@andreaarrighi/pi-meat")
 		throw new Error("wrong package name");
 	if (manifest.main !== undefined)
 		throw new Error("Pi-only package must not declare main");

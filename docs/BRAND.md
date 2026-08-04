@@ -2,7 +2,7 @@
 
 ## Name
 
-Use **pi-meat** in prose, package UI, and headings. Use `@arro000/pi-meat` only for npm package and install commands. Avoid “Pi Meat,” “Pi-Meat,” and claims implying official status.
+Use **pi-meat** in prose, package UI, and headings. Use `@andreaarrighi/pi-meat` only for npm package and install commands. Avoid “Pi Meat,” “Pi-Meat,” and claims implying official status.
 
 ## Positioning
 
