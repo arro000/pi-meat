@@ -1,0 +1,24 @@
+# Node
+node_modules/
+*.tsbuildinfo
+npm-debug.log*
+
+# Go
+bin/
+bridge/pi-meat-bridge
+*.test
+coverage.out
+
+# Pi runtime and local state
+.pi/
+.pi-meat/
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Logs and temporary files
+*.log
+tmp/

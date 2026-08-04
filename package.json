@@ -1,0 +1,62 @@
+{
+  "name": "@arro000/pi-meat",
+  "version": "0.1.0",
+  "description": "A navigable reading-diff experience for Pi, powered by Meat and your Pi subscription.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "author": "arro000",
+  "homepage": "https://github.com/arro000/pi-meat#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/arro000/pi-meat.git"
+  },
+  "bugs": {
+    "url": "https://github.com/arro000/pi-meat/issues"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "code-review",
+    "git-diff",
+    "meat"
+  ],
+  "files": [
+    "extensions",
+    "internal",
+    "bridge",
+    "README.md",
+    "PLAN.md",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "scripts": {
+    "build:bridge": "mkdir -p bin && go -C bridge build -o ../bin/pi-meat-bridge .",
+    "check": "tsc --noEmit && go -C bridge test ./...",
+    "test": "node --test test/*.test.ts && go -C bridge test ./...",
+    "format:check": "gofmt -l bridge | tee /tmp/pi-meat-gofmt && test ! -s /tmp/pi-meat-gofmt"
+  },
+  "pi": {
+    "extensions": [
+      "./extensions/pi-meat/index.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "0.83.0",
+    "@earendil-works/pi-coding-agent": "0.83.0",
+    "@earendil-works/pi-tui": "0.83.0",
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  }
+}
