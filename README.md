@@ -62,17 +62,19 @@ Then:
 
 | Key | Action |
 | --- | --- |
-| `j` / `k`, `↑` / `↓` | Scroll |
+| `j` / `k`, `↑` / `↓` | Scroll vertically |
+| `h` / `l`, `←` / `→` | Scroll source horizontally in synchronized panes |
 | `PgUp` / `PgDn`, `Home` / `End` | Page or jump through current file |
-| `n` / `p`, `←` / `→` | Next / previous changed file |
+| `n` / `p` | Next / previous changed file |
 | `s` | Toggle side-by-side / unified layout |
+| Mouse click / wheel | Select sidebar file / scroll current diff |
 | `Space` | Fold / unfold current file |
 | `Tab` | Toggle reading / original diff |
 | `r` | Close viewer and ask Pi for verified review |
 | `?` | Toggle help |
 | `q` / `Esc` | Close |
 
-Wide terminals render changed-file sidebar plus old/new panes. Medium terminals keep full-width side-by-side panes. Narrow terminals automatically use unified layout.
+Wide terminals render changed-file sidebar plus old/new panes. Medium terminals keep full-width side-by-side panes. Narrow terminals automatically use unified layout. Click sidebar entries to select files; mouse wheel scrolls changes. Hold Shift for terminal-native text selection while mouse reporting is active. Source code uses file-aware syntax highlighting; line numbers and `+`/`-` gutters preserve diff semantics. Footer always shows primary navigation keys plus current line and column ranges.
 
 ## How subscription reuse works
 

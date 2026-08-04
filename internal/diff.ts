@@ -83,15 +83,42 @@ function pathFromFileMarker(value: string): string {
 
 function decodeGitPath(value: string): string {
 	if (!value.startsWith('"') || !value.endsWith('"')) return value;
-	const jsonCompatible = value.replace(
-		/\\([0-7]{3})/g,
-		(_match, octal: string) => String.fromCharCode(Number.parseInt(octal, 8)),
-	);
-	try {
-		return JSON.parse(jsonCompatible) as string;
-	} catch {
-		return value.slice(1, -1);
+	const source = value.slice(1, -1);
+	const bytes: number[] = [];
+	const encoder = new TextEncoder();
+	const escapes: Record<string, number> = {
+		a: 0x07,
+		b: 0x08,
+		t: 0x09,
+		n: 0x0a,
+		v: 0x0b,
+		f: 0x0c,
+		r: 0x0d,
+		'"': 0x22,
+		"\\": 0x5c,
+	};
+	for (let index = 0; index < source.length; ) {
+		if (source[index] === "\\") {
+			const octal = source.slice(index + 1, index + 4);
+			if (/^[0-7]{3}$/.test(octal)) {
+				bytes.push(Number.parseInt(octal, 8));
+				index += 4;
+				continue;
+			}
+			const escaped = source[index + 1];
+			if (escaped !== undefined && escapes[escaped] !== undefined) {
+				bytes.push(escapes[escaped]);
+				index += 2;
+				continue;
+			}
+		}
+		const codePoint = source.codePointAt(index);
+		if (codePoint === undefined) break;
+		const character = String.fromCodePoint(codePoint);
+		bytes.push(...encoder.encode(character));
+		index += character.length;
 	}
+	return new TextDecoder().decode(Uint8Array.from(bytes));
 }
 
 function stripSidePrefix(path: string): string {

@@ -28,6 +28,14 @@ test("handles CRLF, quoted paths, marker-like code and no-newline metadata", () 
 	assert.equal(parsed.files[0]?.path, "src/file name.ts");
 	assert.deepEqual([parsed.files[0]?.added, parsed.files[0]?.removed], [1, 1]);
 	assert.equal(parsed.lines.at(-1)?.kind, "meta");
+
+	const utf8 = parseUnifiedDiff(
+		'diff --git "a/caf\\303\\251.ts" "b/caf\\303\\251.ts"\n' +
+			'--- "a/caf\\303\\251.ts"\n' +
+			'+++ "b/caf\\303\\251.ts"\n' +
+			"@@ -1 +1 @@\n-old\n+new\n",
+	);
+	assert.equal(utf8.files[0]?.path, "café.ts");
 });
 
 test("returns an empty structure for empty input", () => {

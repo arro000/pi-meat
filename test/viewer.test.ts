@@ -80,6 +80,132 @@ test("renders bounded side-by-side content with stable file sidebar", () => {
 	assert.ok(second.some((line) => line.includes("2/2 · src/b.ts")));
 });
 
+test("toggles side-by-side and unified layout with s", () => {
+	const viewer = new MeatDiffViewer({
+		theme,
+		summary: "Layout",
+		originalDiff: diff,
+		readingDiff: diff,
+		modelLabel: "provider/model",
+		viewportHeight: () => 10,
+		done: () => {},
+	});
+	assert.ok(viewer.render(98).some((line) => line.includes("SIDE-BY-SIDE")));
+	viewer.handleInput("s");
+	assert.ok(viewer.render(98).some((line) => line.includes("UNIFIED")));
+	const layoutColumn = visibleWidth("🥩 pi-meat  READING  ORIGINAL  ") + 1;
+	viewer.handleInput(`\x1b[<0;${layoutColumn};1M`);
+	assert.ok(viewer.render(98).some((line) => line.includes("SIDE-BY-SIDE")));
+});
+
+test("selects sidebar files and scrolls diff with SGR mouse input", () => {
+	const body = Array.from(
+		{ length: 30 },
+		(_, index) => ` line ${index + 1}`,
+	).join("\n");
+	const mouseDiff = `${diff}diff --git a/src/c.ts b/src/c.ts\n--- a/src/c.ts\n+++ b/src/c.ts\n@@ -1,30 +1,30 @@\n${body}\n`;
+	const viewer = new MeatDiffViewer({
+		theme,
+		summary: "Mouse",
+		originalDiff: mouseDiff,
+		readingDiff: mouseDiff,
+		modelLabel: "provider/model",
+		viewportHeight: () => 8,
+		done: () => {},
+	});
+	viewer.render(120);
+	viewer.handleInput("\x1b[<0;2;8M");
+	assert.ok(viewer.render(120).some((line) => line.includes("3/3 · src/c.ts")));
+	viewer.handleInput("\x1b[<65;80;8M");
+	const scrolled = viewer.render(120);
+	assert.ok(scrolled.some((line) => line.includes("line 4/")));
+	assert.ok(scrolled.some((line) => line.includes("line 2")));
+});
+
+test("scrolls long source lines horizontally with synchronized split panes", () => {
+	const oldSource = `const oldValue = "${"a".repeat(100)}OLD_END";`;
+	const newSource = `const newValue = "${"b".repeat(100)}NEW_END";`;
+	const longDiff = `diff --git a/src/long.ts b/src/long.ts\n--- a/src/long.ts\n+++ b/src/long.ts\n@@ -1 +1 @@\n-${oldSource}\n+${newSource}\n`;
+	const viewer = new MeatDiffViewer({
+		theme,
+		summary: "Long lines",
+		originalDiff: longDiff,
+		readingDiff: longDiff,
+		modelLabel: "provider/model",
+		viewportHeight: () => 8,
+		done: () => {},
+	});
+
+	const initial = viewer.render(98);
+	assert.ok(initial.some((line) => line.includes("h/l ←/→ horizontal")));
+	assert.ok(initial.every((line) => !line.includes("OLD_END")));
+	assert.ok(initial.every((line) => !line.includes("NEW_END")));
+
+	for (let index = 0; index < 40; index++) viewer.handleInput("\u001b[C");
+	const scrolled = viewer.render(98);
+	assert.ok(
+		scrolled.some(
+			(line) => line.includes("OLD_END") && line.includes("NEW_END"),
+		),
+	);
+	assert.ok(scrolled.some((line) => /col [2-9][0-9]+-/.test(line)));
+	assert.ok(scrolled.every((line) => visibleWidth(line) <= 98));
+});
+
+test("keeps binary metadata intact in unified layout", () => {
+	const binaryDiff = `diff --git a/image.png b/image.png\nindex 111..222 100644\nBinary files a/image.png and b/image.png differ\n`;
+	const viewer = new MeatDiffViewer({
+		theme,
+		summary: "Binary",
+		originalDiff: binaryDiff,
+		readingDiff: binaryDiff,
+		modelLabel: "provider/model",
+		viewportHeight: () => 8,
+		done: () => {},
+	});
+	const lines = viewer.render(72);
+	assert.ok(lines.some((line) => line.includes("Binary files a/image.png")));
+	assert.ok(lines.every((line) => !line.includes("B Binary files")));
+});
+
+test("preserves final columns with five-digit split line numbers", () => {
+	const source = `${"x".repeat(44)}Z`;
+	const numberedDiff = `diff --git a/large.ts b/large.ts\n--- a/large.ts\n+++ b/large.ts\n@@ -10000 +10000 @@\n-${source}\n+${source}\n`;
+	const viewer = new MeatDiffViewer({
+		theme,
+		summary: "Large line numbers",
+		originalDiff: numberedDiff,
+		readingDiff: numberedDiff,
+		modelLabel: "provider/model",
+		viewportHeight: () => 8,
+		done: () => {},
+	});
+	viewer.render(98);
+	for (let index = 0; index < 20; index++) viewer.handleInput("l");
+	const lines = viewer.render(98);
+	assert.ok(lines.some((line) => line.includes("Z") && line.includes("10000")));
+	assert.ok(lines.some((line) => line.includes("col 7-45/45")));
+});
+
+test("reaches long-line tails in very narrow terminals", () => {
+	const source = `${"x".repeat(24)}Z`;
+	const narrowDiff = `diff --git a/narrow.ts b/narrow.ts\n--- a/narrow.ts\n+++ b/narrow.ts\n@@ -1 +1 @@\n-${source}\n+${source}\n`;
+	const viewer = new MeatDiffViewer({
+		theme,
+		summary: "Narrow",
+		originalDiff: narrowDiff,
+		readingDiff: narrowDiff,
+		modelLabel: "provider/model",
+		viewportHeight: () => 8,
+		done: () => {},
+	});
+	viewer.render(10);
+	for (let index = 0; index < 20; index++) viewer.handleInput("l");
+	const lines = viewer.render(10);
+	assert.ok(lines.some((line) => line.includes("Z")));
+	assert.ok(lines.every((line) => visibleWidth(line) <= 10));
+});
+
 test("keeps every responsive layout within terminal width", () => {
 	for (const width of [23, 60, 71, 72, 97, 98, 120]) {
 		const viewer = new MeatDiffViewer({
@@ -101,6 +227,44 @@ test("keeps every responsive layout within terminal width", () => {
 		if (width < 120)
 			assert.ok(lines.every((line) => !line.includes("FILES 2")));
 	}
+});
+
+test("sanitizes control characters decoded from quoted Git paths", () => {
+	const pathDiff =
+		'diff --git "a/evil\\nname.ts" "b/evil\\nname.ts"\n' +
+		'--- "a/evil\\nname.ts"\n' +
+		'+++ "b/evil\\nname.ts"\n' +
+		"@@ -1 +1 @@\n-old\n+new\n";
+	const viewer = new MeatDiffViewer({
+		theme,
+		summary: "Path controls",
+		originalDiff: pathDiff,
+		readingDiff: pathDiff,
+		modelLabel: "provider/model",
+		viewportHeight: () => 8,
+		done: () => {},
+	});
+	const lines = viewer.render(72);
+	assert.ok(lines.some((line) => line.includes("evil�name.ts")));
+	assert.ok(lines.every((line) => !line.includes("\n")));
+
+	const c1Diff =
+		'diff --git "a/evil\\302\\23331m.ts" "b/evil\\302\\23331m.ts"\n' +
+		'--- "a/evil\\302\\23331m.ts"\n' +
+		'+++ "b/evil\\302\\23331m.ts"\n' +
+		"@@ -1 +1 @@\n-old\n+new\n";
+	const c1Viewer = new MeatDiffViewer({
+		theme,
+		summary: "C1 path controls",
+		originalDiff: c1Diff,
+		readingDiff: c1Diff,
+		modelLabel: "provider/model",
+		viewportHeight: () => 8,
+		done: () => {},
+	});
+	const c1Lines = c1Viewer.render(72);
+	assert.ok(c1Lines.some((line) => line.includes("evil�31m.ts")));
+	assert.ok(c1Lines.every((line) => !line.includes("\u009b")));
 });
 
 test("reaches final unified line and sanitizes terminal controls", () => {

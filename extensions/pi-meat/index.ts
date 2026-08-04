@@ -9,7 +9,7 @@ import type {
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { BorderedLoader } from "@earendil-works/pi-coding-agent";
-import { Text } from "@earendil-works/pi-tui";
+import { Text, type Terminal } from "@earendil-works/pi-tui";
 import { runBridge } from "./bridge.ts";
 import {
 	toPiContext,
@@ -179,6 +179,7 @@ export default function piMeat(pi: ExtensionAPI) {
 							viewportHeight: () => Math.max(8, tui.terminal.rows - 9),
 							done,
 						});
+						const stopMouseReporting = startMouseReporting(tui.terminal);
 						return {
 							render: (width) => viewer.render(width),
 							handleInput: (data) => {
@@ -186,8 +187,21 @@ export default function piMeat(pi: ExtensionAPI) {
 								tui.requestRender();
 							},
 							invalidate: () => viewer.invalidate(),
-							dispose: () => viewer.dispose(),
+							dispose: () => {
+								stopMouseReporting();
+								viewer.dispose();
+							},
 						};
+					},
+					{
+						overlay: true,
+						overlayOptions: {
+							anchor: "top-left",
+							row: 0,
+							col: 0,
+							width: "100%",
+							maxHeight: "100%",
+						},
 					},
 				);
 
@@ -219,6 +233,21 @@ export default function piMeat(pi: ExtensionAPI) {
 			await openMeatSettingsSafely(ctx);
 		},
 	});
+}
+
+function startMouseReporting(terminal: Terminal): () => void {
+	let active = true;
+	const stop = () => {
+		if (!active) return;
+		active = false;
+		terminal.write("\x1b[?1000l\x1b[?1006l");
+	};
+	terminal.write("\x1b[?1000h\x1b[?1006h");
+	process.once("exit", stop);
+	return () => {
+		process.removeListener("exit", stop);
+		stop();
+	};
 }
 
 async function openMeatSettingsSafely(ctx: ExtensionContext): Promise<void> {

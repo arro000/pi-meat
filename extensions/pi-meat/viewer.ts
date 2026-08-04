@@ -1,7 +1,12 @@
-import type { Theme } from "@earendil-works/pi-coding-agent";
+import {
+	getLanguageFromPath,
+	highlightCode,
+	type Theme,
+} from "@earendil-works/pi-coding-agent";
 import {
 	Key,
 	matchesKey,
+	sliceByColumn,
 	truncateToWidth,
 	visibleWidth,
 } from "@earendil-works/pi-tui";
@@ -37,11 +42,15 @@ export class MeatDiffViewer {
 	private layout: LayoutMode = "split";
 	private selectedFile = 0;
 	private scroll = 0;
+	private horizontalScroll = 0;
 	private sidebarScroll = 0;
 	private help = false;
 	private collapsed = false;
 	private lastLayout: LayoutMode = "split";
 	private lastBodyHeight = 8;
+	private lastContentWidth = 88;
+	private lastSidebarWidth = 0;
+	private lastBodyStartRow = 3;
 	private readonly reading: ParsedDiff;
 	private readonly original: ParsedDiff;
 	private readonly options: MeatDiffViewerOptions;
@@ -53,6 +62,11 @@ export class MeatDiffViewer {
 	}
 
 	handleInput(data: string): void {
+		const mouse = parseMouseEvent(data);
+		if (mouse) {
+			this.handleMouse(mouse);
+			return;
+		}
 		if (matchesKey(data, Key.escape) || data === "q")
 			return this.options.done("close");
 		if (data === "r") return this.options.done("review");
@@ -63,18 +77,27 @@ export class MeatDiffViewer {
 		if (data === "s") {
 			this.layout = this.layout === "split" ? "unified" : "split";
 			this.scroll = 0;
+			this.horizontalScroll = 0;
 			return;
 		}
 		if (matchesKey(data, Key.tab)) {
 			this.toggleMode();
 			return;
 		}
-		if (data === "n" || matchesKey(data, Key.right)) {
+		if (data === "n") {
 			this.selectFile(1);
 			return;
 		}
-		if (data === "p" || matchesKey(data, Key.left)) {
+		if (data === "p") {
 			this.selectFile(-1);
+			return;
+		}
+		if (data === "h" || matchesKey(data, Key.left)) {
+			this.scrollHorizontally(-4);
+			return;
+		}
+		if (data === "l" || matchesKey(data, Key.right)) {
+			this.scrollHorizontally(4);
 			return;
 		}
 		if (matchesKey(data, Key.space)) {
@@ -99,7 +122,7 @@ export class MeatDiffViewer {
 		const file = this.active.files[this.selectedFile];
 		const sidebarWidth = this.sidebarWidth(w);
 		const contentWidth = Math.max(
-			20,
+			1,
 			w - (sidebarWidth > 0 ? sidebarWidth + 3 : 0),
 		);
 		const effectiveLayout: LayoutMode =
@@ -110,6 +133,14 @@ export class MeatDiffViewer {
 		);
 		this.lastLayout = effectiveLayout;
 		this.lastBodyHeight = bodyHeight;
+		this.lastContentWidth = contentWidth;
+		this.lastSidebarWidth = sidebarWidth;
+		this.lastBodyStartRow = 3 + (this.help ? 3 : 0);
+		this.horizontalScroll = clamp(
+			this.horizontalScroll,
+			0,
+			this.maxHorizontalScroll,
+		);
 		const content = this.renderContent(
 			contentWidth,
 			bodyHeight,
@@ -132,9 +163,24 @@ export class MeatDiffViewer {
 		const position = file
 			? `${this.selectedFile + 1}/${this.active.files.length} · ${sanitizeText(file.path)}`
 			: "No changed files";
+		const sourceWidth = this.sourceViewportWidth(effectiveLayout, contentWidth);
+		const sourceLength = Math.max(sourceWidth, this.maxSourceWidth);
+		const columnEnd = Math.min(
+			sourceLength,
+			this.horizontalScroll + sourceWidth,
+		);
 		lines.push(
 			fit(
-				`${theme.fg("accent", position)} ${theme.fg("dim", `· ${this.scroll + 1}/${Math.max(1, this.contentLength)} · ? help`)}`,
+				`${theme.fg("accent", position)} ${theme.fg("dim", `· line ${this.scroll + 1}/${Math.max(1, this.contentLength)} · col ${this.horizontalScroll + 1}-${Math.max(this.horizontalScroll + 1, columnEnd)}/${sourceLength}`)}`,
+				w,
+			),
+		);
+		lines.push(
+			fit(
+				theme.fg(
+					"dim",
+					"j/k ↑/↓ vertical · h/l ←/→ horizontal · n/p file · ? help",
+				),
 				w,
 			),
 		);
@@ -158,6 +204,43 @@ export class MeatDiffViewer {
 	}
 	private get maxScroll(): number {
 		return Math.max(0, this.contentLength - this.lastBodyHeight);
+	}
+	private get maxSourceWidth(): number {
+		let width = 0;
+		if (this.lastLayout === "split") {
+			for (const row of buildSplitRows(this.active, this.selectedFile)) {
+				if (row.kind !== "pair") continue;
+				width = Math.max(
+					width,
+					sourceWidth(row.left?.text),
+					sourceWidth(row.right?.text),
+				);
+			}
+			return width;
+		}
+		for (const line of this.selectedLines) {
+			if (!isUnifiedSourceLine(line)) continue;
+			width = Math.max(width, sourceWidth(stripDiffMarker(line.text)));
+		}
+		return width;
+	}
+	private get maxHorizontalScroll(): number {
+		return Math.max(
+			0,
+			this.maxSourceWidth -
+				this.sourceViewportWidth(this.lastLayout, this.lastContentWidth),
+		);
+	}
+	private get lineNumberWidth(): number {
+		let width = 4;
+		for (const row of buildSplitRows(this.active, this.selectedFile)) {
+			if (row.kind !== "pair") continue;
+			for (const line of [row.left, row.right]) {
+				if (line?.number !== undefined)
+					width = Math.max(width, String(line.number).length);
+			}
+		}
+		return width;
 	}
 
 	private splitContentLength(): number {
@@ -196,9 +279,9 @@ export class MeatDiffViewer {
 		const muted = (text: string) =>
 			fit(this.options.theme.fg("muted", text), width);
 		return [
-			muted("j/k ↑/↓ scroll · n/p ←/→ file · PgUp/PgDn page · Home/End"),
-			muted("Tab reading/original · s side-by-side/unified · Space fold file"),
-			muted("r review with Pi · ? help · q/Esc close"),
+			muted("j/k ↑/↓ vertical · h/l ←/→ horizontal · n/p previous/next file"),
+			muted("PgUp/PgDn page · Home/End · Tab reading/original · s layout"),
+			muted("Space fold file · r review with Pi · ? help · q/Esc close"),
 		];
 	}
 
@@ -272,23 +355,62 @@ export class MeatDiffViewer {
 	}
 
 	private renderUnified(width: number): string[] {
-		return this.selectedLines.map((line) =>
-			colorText(line.text, line.kind, this.options.theme, width),
+		const language = getLanguageFromPath(
+			this.active.files[this.selectedFile]?.path ?? "",
 		);
+		const lines = this.selectedLines;
+		const highlighted = highlightUnifiedSources(
+			lines,
+			language,
+			this.options.theme,
+		);
+		return lines.map((line, index) => {
+			if (!isUnifiedSourceLine(line))
+				return colorText(line.text, line.kind, this.options.theme, width);
+			const marker = colorText(
+				line.text.slice(0, 1),
+				line.kind,
+				this.options.theme,
+			);
+			const source = cropHighlightedSource(
+				highlighted.get(index) ?? sanitizeText(stripDiffMarker(line.text)),
+				this.horizontalScroll,
+				Math.max(0, width - 2),
+			);
+			return fit(`${marker} ${source}`, width);
+		});
 	}
 
 	private renderSplit(width: number): string[] {
 		const gap = 3;
-		const columnWidth = Math.max(20, Math.floor((width - gap) / 2));
+		const columnWidth = Math.max(1, Math.floor((width - gap) / 2));
 		const divider = ` ${this.options.theme.fg("borderMuted", "│")} `;
 		const header = `${pad(this.options.theme.fg("error", "OLD"), columnWidth)}${divider}${fit(this.options.theme.fg("success", "NEW"), columnWidth)}`;
-		const rows = buildSplitRows(this.active, this.selectedFile).flatMap(
-			(row) =>
-				row.kind === "meta" && !showSplitMetadata(row)
-					? []
-					: [this.renderSplitRow(row, columnWidth, divider, width)],
+		const rows = buildSplitRows(this.active, this.selectedFile);
+		const language = getLanguageFromPath(
+			this.active.files[this.selectedFile]?.path ?? "",
 		);
-		return [header, ...rows];
+		const highlighted = highlightSplitSources(
+			rows,
+			language,
+			this.options.theme,
+		);
+		const numberWidth = this.lineNumberWidth;
+		const rendered = rows.flatMap((row, index) =>
+			row.kind === "meta" && !showSplitMetadata(row)
+				? []
+				: [
+						this.renderSplitRow(
+							row,
+							columnWidth,
+							divider,
+							width,
+							numberWidth,
+							highlighted.get(index),
+						),
+					],
+		);
+		return [header, ...rendered];
 	}
 
 	private renderSplitRow(
@@ -296,17 +418,41 @@ export class MeatDiffViewer {
 		columnWidth: number,
 		divider: string,
 		width: number,
+		numberWidth: number,
+		highlighted: HighlightedPair | undefined,
 	): string {
 		if (row.kind === "meta")
 			return fit(colorText(row.text, row.lineKind, this.options.theme), width);
-		const left = renderNumbered(row.left, columnWidth, this.options.theme);
-		const right = renderNumbered(row.right, columnWidth, this.options.theme);
+		const left = renderNumbered(
+			row.left,
+			columnWidth,
+			numberWidth,
+			this.horizontalScroll,
+			highlighted?.left,
+			this.options.theme,
+		);
+		const right = renderNumbered(
+			row.right,
+			columnWidth,
+			numberWidth,
+			this.horizontalScroll,
+			highlighted?.right,
+			this.options.theme,
+		);
 		return `${pad(left, columnWidth)}${divider}${fit(right, columnWidth)}`;
 	}
 
 	private sidebarWidth(width: number): number {
 		if (this.active.files.length < 2 || width < 120) return 0;
 		return clamp(Math.floor(width * 0.22), 24, 32);
+	}
+
+	private sourceViewportWidth(layout: LayoutMode, width: number): number {
+		if (layout === "split") {
+			const columnWidth = Math.max(1, Math.floor((width - 3) / 2));
+			return Math.max(0, columnWidth - this.lineNumberWidth - 3);
+		}
+		return Math.max(0, width - 2);
 	}
 
 	private toggleMode(): void {
@@ -324,6 +470,7 @@ export class MeatDiffViewer {
 						Math.max(0, this.active.files.length - 1),
 					);
 		this.scroll = 0;
+		this.horizontalScroll = 0;
 		this.collapsed = false;
 	}
 
@@ -335,11 +482,79 @@ export class MeatDiffViewer {
 			this.active.files.length - 1,
 		);
 		this.scroll = 0;
+		this.horizontalScroll = 0;
+		this.collapsed = false;
+	}
+
+	private handleMouse(event: MouseEvent): void {
+		if (event.action === "wheel-up") {
+			this.scrollBy(-3);
+			return;
+		}
+		if (event.action === "wheel-down") {
+			this.scrollBy(3);
+			return;
+		}
+		if (event.action === "wheel-left") {
+			this.scrollHorizontally(-4);
+			return;
+		}
+		if (event.action === "wheel-right") {
+			this.scrollHorizontally(4);
+			return;
+		}
+		if (event.action !== "press") return;
+
+		const row = event.y - 1;
+		const column = event.x - 1;
+		if (row === 0) {
+			this.handleHeaderClick(column);
+			return;
+		}
+		if (this.lastSidebarWidth === 0 || column >= this.lastSidebarWidth) return;
+		const fileRow = row - this.lastBodyStartRow - 2;
+		const fileIndex = this.sidebarScroll + fileRow;
+		if (fileRow < 0 || fileIndex >= this.active.files.length) return;
+		this.selectFileIndex(fileIndex);
+	}
+
+	private handleHeaderClick(column: number): void {
+		const brandWidth = visibleWidth("🥩 pi-meat  ");
+		const readingEnd = brandWidth + visibleWidth("READING");
+		const originalStart = readingEnd + 2;
+		const originalEnd = originalStart + visibleWidth("ORIGINAL");
+		const layoutStart = originalEnd + 2;
+		const layoutEnd =
+			layoutStart +
+			visibleWidth(this.lastLayout === "split" ? "SIDE-BY-SIDE" : "UNIFIED");
+		if (column >= brandWidth && column < readingEnd) {
+			if (this.mode !== "reading") this.toggleMode();
+		} else if (column >= originalStart && column < originalEnd) {
+			if (this.mode !== "original") this.toggleMode();
+		} else if (column >= layoutStart && column < layoutEnd) {
+			this.layout = this.layout === "split" ? "unified" : "split";
+			this.scroll = 0;
+			this.horizontalScroll = 0;
+		}
+	}
+
+	private selectFileIndex(index: number): void {
+		if (index === this.selectedFile) return;
+		this.selectedFile = index;
+		this.scroll = 0;
+		this.horizontalScroll = 0;
 		this.collapsed = false;
 	}
 
 	private scrollBy(delta: number): void {
 		this.scroll = clamp(this.scroll + delta, 0, this.maxScroll);
+	}
+	private scrollHorizontally(delta: number): void {
+		this.horizontalScroll = clamp(
+			this.horizontalScroll + delta,
+			0,
+			this.maxHorizontalScroll,
+		);
 	}
 	private ensureSelection(): void {
 		this.selectedFile = clamp(
@@ -350,15 +565,63 @@ export class MeatDiffViewer {
 	}
 }
 
+type MouseAction =
+	| "press"
+	| "release"
+	| "wheel-up"
+	| "wheel-down"
+	| "wheel-left"
+	| "wheel-right";
+
+interface MouseEvent {
+	action: MouseAction;
+	x: number;
+	y: number;
+}
+
+function parseMouseEvent(data: string): MouseEvent | undefined {
+	const match = data.match(/^\x1b\[<(\d+);(\d+);(\d+)([Mm])$/);
+	if (!match) return undefined;
+	const button = Number(match[1]);
+	const x = Number(match[2]);
+	const y = Number(match[3]);
+	if (!Number.isSafeInteger(x) || !Number.isSafeInteger(y) || x < 1 || y < 1)
+		return undefined;
+	const wheel = button & 0xc3;
+	if (wheel === 64) return { action: "wheel-up", x, y };
+	if (wheel === 65) return { action: "wheel-down", x, y };
+	if (wheel === 66) return { action: "wheel-left", x, y };
+	if (wheel === 67) return { action: "wheel-right", x, y };
+	if (match[4] === "m") return { action: "release", x, y };
+	if ((button & 0x23) === 0) return { action: "press", x, y };
+	return undefined;
+}
+
 function renderNumbered(
 	line: NumberedDiffLine | undefined,
 	width: number,
+	numberWidth: number,
+	horizontalScroll: number,
+	highlightedSource: string | undefined,
 	theme: Theme,
 ): string {
 	if (!line) return "";
 	const number =
-		line.number === undefined ? "    " : String(line.number).padStart(4);
-	return colorText(`${number} ${line.text}`, line.kind, theme, width);
+		line.number === undefined
+			? " ".repeat(numberWidth)
+			: String(line.number).padStart(numberWidth);
+	let marker = " ";
+	if (line.kind === "add") marker = "+";
+	else if (line.kind === "remove") marker = "-";
+	const source = cropHighlightedSource(
+		highlightedSource ?? colorText(line.text, line.kind, theme),
+		horizontalScroll,
+		Math.max(0, width - numberWidth - 3),
+	);
+	return fit(
+		`${theme.fg("muted", number)} ${colorText(marker, line.kind, theme)} ${source}`,
+		width,
+	);
 }
 
 function showSplitMetadata(
@@ -396,7 +659,153 @@ function colorText(
 }
 
 function sanitizeText(value: string): string {
-	return value.replace(/\t/g, "    ").replace(/[\x00-\x08\x0b-\x1f\x7f]/g, "�");
+	return value.replace(/\t/g, "    ").replace(/[\x00-\x1f\x7f-\x9f]/g, "�");
+}
+
+interface SourceEntry {
+	index: number;
+	source: string;
+	kind: DiffLine["kind"];
+}
+
+interface HighlightedPair {
+	left?: string;
+	right?: string;
+}
+
+function highlightEntries(
+	entries: SourceEntry[],
+	language: string | undefined,
+	theme: Theme,
+): string[] {
+	if (entries.length === 0) return [];
+	const sources = entries.map((entry) => sanitizeText(entry.source));
+	if (!language)
+		return sources.map((source, index) =>
+			colorText(source, entries[index]?.kind ?? "context", theme),
+		);
+	const highlighted = highlightCode(sources.join("\n"), language);
+	return sources.map((source, index) => highlighted[index] ?? source);
+}
+
+function highlightUnifiedSources(
+	lines: DiffLine[],
+	language: string | undefined,
+	theme: Theme,
+): Map<number, string> {
+	const result = new Map<number, string>();
+	let oldEntries: SourceEntry[] = [];
+	let newEntries: SourceEntry[] = [];
+	const flush = () => {
+		for (const [index, highlighted] of highlightEntries(
+			oldEntries,
+			language,
+			theme,
+		).entries()) {
+			const entry = oldEntries[index];
+			if (entry) result.set(entry.index, highlighted);
+		}
+		for (const [index, highlighted] of highlightEntries(
+			newEntries,
+			language,
+			theme,
+		).entries()) {
+			const entry = newEntries[index];
+			if (entry) result.set(entry.index, highlighted);
+		}
+		oldEntries = [];
+		newEntries = [];
+	};
+	for (const [index, line] of lines.entries()) {
+		if (line.kind === "hunk") flush();
+		if (!isUnifiedSourceLine(line)) continue;
+		const entry = {
+			index,
+			source: stripDiffMarker(line.text),
+			kind: line.kind,
+		};
+		if (line.kind !== "add") oldEntries.push(entry);
+		if (line.kind !== "remove") newEntries.push(entry);
+	}
+	flush();
+	return result;
+}
+
+function highlightSplitSources(
+	rows: SplitDiffRow[],
+	language: string | undefined,
+	theme: Theme,
+): Map<number, HighlightedPair> {
+	const result = new Map<number, HighlightedPair>();
+	let leftEntries: SourceEntry[] = [];
+	let rightEntries: SourceEntry[] = [];
+	const flush = () => {
+		for (const [index, highlighted] of highlightEntries(
+			leftEntries,
+			language,
+			theme,
+		).entries()) {
+			const entry = leftEntries[index];
+			if (entry)
+				result.set(entry.index, {
+					...result.get(entry.index),
+					left: highlighted,
+				});
+		}
+		for (const [index, highlighted] of highlightEntries(
+			rightEntries,
+			language,
+			theme,
+		).entries()) {
+			const entry = rightEntries[index];
+			if (entry)
+				result.set(entry.index, {
+					...result.get(entry.index),
+					right: highlighted,
+				});
+		}
+		leftEntries = [];
+		rightEntries = [];
+	};
+	for (const [index, row] of rows.entries()) {
+		if (row.kind === "meta") {
+			flush();
+			continue;
+		}
+		if (row.left)
+			leftEntries.push({ index, source: row.left.text, kind: row.left.kind });
+		if (row.right)
+			rightEntries.push({
+				index,
+				source: row.right.text,
+				kind: row.right.kind,
+			});
+	}
+	flush();
+	return result;
+}
+
+function isUnifiedSourceLine(line: DiffLine): boolean {
+	if (line.kind === "add") return line.text.startsWith("+");
+	if (line.kind === "remove") return line.text.startsWith("-");
+	return line.kind === "context" && line.text.startsWith(" ");
+}
+
+function stripDiffMarker(text: string): string {
+	return /^[ +-]/.test(text) ? text.slice(1) : text;
+}
+
+function sourceWidth(value: string | undefined): number {
+	return value === undefined ? 0 : visibleWidth(sanitizeText(value));
+}
+
+function cropHighlightedSource(
+	value: string,
+	offset: number,
+	width: number,
+): string {
+	if (width <= 0) return "";
+	return sliceByColumn(value, offset, width, true);
 }
 
 function fit(value: string, width: number): string {
