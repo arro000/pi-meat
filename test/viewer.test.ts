@@ -80,6 +80,31 @@ test("renders bounded side-by-side content with stable file sidebar", () => {
 	assert.ok(second.some((line) => line.includes("2/2 · src/b.ts")));
 });
 
+test("adds subtle backgrounds to added and removed lines", () => {
+	const backgrounds: string[] = [];
+	const backgroundTheme = {
+		fg: (_color: string, text: string) => text,
+		bg: (color: string, text: string) => {
+			backgrounds.push(color);
+			return text;
+		},
+		bold: (text: string) => text,
+	} as unknown as Theme;
+	const viewer = new MeatDiffViewer({
+		theme: backgroundTheme,
+		summary: "Backgrounds",
+		originalDiff: diff,
+		readingDiff: diff,
+		modelLabel: "provider/model",
+		viewportHeight: () => 10,
+		done: () => {},
+	});
+
+	viewer.render(120);
+	assert.ok(backgrounds.includes("toolErrorBg"));
+	assert.ok(backgrounds.includes("toolSuccessBg"));
+});
+
 test("toggles side-by-side and unified layout with s", () => {
 	const viewer = new MeatDiffViewer({
 		theme,
@@ -150,6 +175,30 @@ test("scrolls long source lines horizontally with synchronized split panes", () 
 	);
 	assert.ok(scrolled.some((line) => /col [2-9][0-9]+-/.test(line)));
 	assert.ok(scrolled.every((line) => visibleWidth(line) <= 98));
+});
+
+test("supports native and shifted horizontal mouse wheels", () => {
+	const source = `${"0123456789".repeat(12)}END`;
+	const longDiff = `diff --git a/src/wheel.ts b/src/wheel.ts\n--- a/src/wheel.ts\n+++ b/src/wheel.ts\n@@ -1 +1 @@\n-${source}\n+${source}\n`;
+	const viewer = new MeatDiffViewer({
+		theme,
+		summary: "Horizontal wheel",
+		originalDiff: longDiff,
+		readingDiff: longDiff,
+		modelLabel: "provider/model",
+		viewportHeight: () => 8,
+		done: () => {},
+	});
+
+	viewer.render(72);
+	viewer.handleInput("\x1b[<67;40;5M");
+	assert.ok(viewer.render(72).some((line) => line.includes("col 5-")));
+	viewer.handleInput("\x1b[<69;40;5M");
+	assert.ok(viewer.render(72).some((line) => line.includes("col 9-")));
+	viewer.handleInput("\x1b[<66;40;5M");
+	assert.ok(viewer.render(72).some((line) => line.includes("col 5-")));
+	viewer.handleInput("\x1b[<68;40;5M");
+	assert.ok(viewer.render(72).some((line) => line.includes("col 1-")));
 });
 
 test("keeps binary metadata intact in unified layout", () => {

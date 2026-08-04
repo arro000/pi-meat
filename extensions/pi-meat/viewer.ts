@@ -377,7 +377,11 @@ export class MeatDiffViewer {
 				this.horizontalScroll,
 				Math.max(0, width - 2),
 			);
-			return fit(`${marker} ${source}`, width);
+			return colorLineBackground(
+				fit(`${marker} ${source}`, width),
+				line.kind,
+				this.options.theme,
+			);
 		});
 	}
 
@@ -588,8 +592,11 @@ function parseMouseEvent(data: string): MouseEvent | undefined {
 	if (!Number.isSafeInteger(x) || !Number.isSafeInteger(y) || x < 1 || y < 1)
 		return undefined;
 	const wheel = button & 0xc3;
-	if (wheel === 64) return { action: "wheel-up", x, y };
-	if (wheel === 65) return { action: "wheel-down", x, y };
+	const shifted = (button & 4) !== 0;
+	if (wheel === 64)
+		return { action: shifted ? "wheel-left" : "wheel-up", x, y };
+	if (wheel === 65)
+		return { action: shifted ? "wheel-right" : "wheel-down", x, y };
 	if (wheel === 66) return { action: "wheel-left", x, y };
 	if (wheel === 67) return { action: "wheel-right", x, y };
 	if (match[4] === "m") return { action: "release", x, y };
@@ -618,9 +625,13 @@ function renderNumbered(
 		horizontalScroll,
 		Math.max(0, width - numberWidth - 3),
 	);
-	return fit(
-		`${theme.fg("muted", number)} ${colorText(marker, line.kind, theme)} ${source}`,
-		width,
+	return colorLineBackground(
+		fit(
+			`${theme.fg("muted", number)} ${colorText(marker, line.kind, theme)} ${source}`,
+			width,
+		),
+		line.kind,
+		theme,
 	);
 }
 
@@ -656,6 +667,16 @@ function colorText(
 		default:
 			return theme.fg("toolDiffContext", value);
 	}
+}
+
+function colorLineBackground(
+	value: string,
+	kind: DiffLine["kind"],
+	theme: Theme,
+): string {
+	if (kind === "add") return theme.bg("toolSuccessBg", value);
+	if (kind === "remove") return theme.bg("toolErrorBg", value);
+	return value;
 }
 
 function sanitizeText(value: string): string {
