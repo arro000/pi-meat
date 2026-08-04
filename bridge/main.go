@@ -166,8 +166,11 @@ func main() {
 	}
 
 	_ = model.send(event{Type: "ready", ProtocolVersion: protocolVersion})
+	// Do not expose repository tools to model-driven abridgement. Selected diff is
+	// sufficient input; disabling RepoRoot prevents reads of unrelated, ignored,
+	// metadata, or symlinked files from repository checkout.
 	result, err := meat.Abridge(context.Background(), model, meat.Request{
-		RepoRoot:    start.RepoRoot,
+		RepoRoot:    "",
 		UnifiedDiff: start.Diff,
 		MaxTurns:    start.MaxTurns,
 		Progress: func(message string) {

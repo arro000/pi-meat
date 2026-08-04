@@ -22,6 +22,7 @@ import {
 	type NumberedDiffLine,
 	type SplitDiffRow,
 } from "./diff-layout.ts";
+import { sanitizeTerminalText } from "./terminal.ts";
 
 export type ViewerAction = "close" | "review";
 type ViewMode = "reading" | "original";
@@ -161,7 +162,7 @@ export class MeatDiffViewer {
 		}
 		lines.push(fit(theme.fg("borderMuted", "─".repeat(w)), w));
 		const position = file
-			? `${this.selectedFile + 1}/${this.active.files.length} · ${sanitizeText(file.path)}`
+			? `${this.selectedFile + 1}/${this.active.files.length} · ${sanitizeTerminalText(file.path)}`
 			: "No changed files";
 		const sourceWidth = this.sourceViewportWidth(effectiveLayout, contentWidth);
 		const sourceLength = Math.max(sourceWidth, this.maxSourceWidth);
@@ -268,7 +269,7 @@ export class MeatDiffViewer {
 				width,
 			),
 			fit(
-				`${theme.fg("text", sanitizeText(this.options.summary || "Reading diff"))} ${theme.fg("dim", `· ${sanitizeText(this.options.modelLabel)}`)}`,
+				`${theme.fg("text", sanitizeTerminalText(this.options.summary || "Reading diff"))} ${theme.fg("dim", `· ${sanitizeTerminalText(this.options.modelLabel)}`)}`,
 				width,
 			),
 			fit(theme.fg("borderMuted", "─".repeat(width)), width),
@@ -328,7 +329,7 @@ export class MeatDiffViewer {
 			4,
 			width - visibleWidth(marker) - visibleWidth(counts) - 1,
 		);
-		const label = `${marker}${truncateToWidth(sanitizeText(file.path), pathWidth, "…")} ${counts}`;
+		const label = `${marker}${truncateToWidth(sanitizeTerminalText(file.path), pathWidth, "…")} ${counts}`;
 		return fit(
 			selected
 				? theme.bg("selectedBg", theme.fg("text", label))
@@ -373,7 +374,8 @@ export class MeatDiffViewer {
 				this.options.theme,
 			);
 			const source = cropHighlightedSource(
-				highlighted.get(index) ?? sanitizeText(stripDiffMarker(line.text)),
+				highlighted.get(index) ??
+					sanitizeTerminalText(stripDiffMarker(line.text)),
 				this.horizontalScroll,
 				Math.max(0, width - 2),
 			);
@@ -652,7 +654,7 @@ function colorText(
 	theme: Theme,
 	width?: number,
 ): string {
-	const safeText = sanitizeText(text);
+	const safeText = sanitizeTerminalText(text);
 	const value =
 		width === undefined ? safeText : truncateToWidth(safeText, width, "…");
 	switch (kind) {
@@ -679,10 +681,6 @@ function colorLineBackground(
 	return value;
 }
 
-function sanitizeText(value: string): string {
-	return value.replace(/\t/g, "    ").replace(/[\x00-\x1f\x7f-\x9f]/g, "�");
-}
-
 interface SourceEntry {
 	index: number;
 	source: string;
@@ -700,7 +698,7 @@ function highlightEntries(
 	theme: Theme,
 ): string[] {
 	if (entries.length === 0) return [];
-	const sources = entries.map((entry) => sanitizeText(entry.source));
+	const sources = entries.map((entry) => sanitizeTerminalText(entry.source));
 	if (!language)
 		return sources.map((source, index) =>
 			colorText(source, entries[index]?.kind ?? "context", theme),
@@ -817,7 +815,7 @@ function stripDiffMarker(text: string): string {
 }
 
 function sourceWidth(value: string | undefined): number {
-	return value === undefined ? 0 : visibleWidth(sanitizeText(value));
+	return value === undefined ? 0 : visibleWidth(sanitizeTerminalText(value));
 }
 
 function cropHighlightedSource(

@@ -12,6 +12,7 @@ coverage.out
 # Pi runtime and local state
 .pi/
 .pi-meat/
+.pi-subagents/
 
 # Editors / OS
 .DS_Store

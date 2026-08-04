@@ -1,0 +1,14 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": [
+    "extensions/pi-meat/index.ts",
+    "scripts/**/*.mjs",
+    "test/**/*.test.ts"
+  ],
+  "project": [
+    "extensions/**/*.ts",
+    "internal/**/*.ts",
+    "scripts/**/*.mjs",
+    "test/**/*.ts"
+  ]
+}

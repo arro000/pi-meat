@@ -39,7 +39,13 @@ export type BridgeEvent =
 	| { type: "ready"; protocol_version: number }
 	| { type: "progress"; message: string }
 	| GenerateRequest
-	| { type: "result"; summary: string; smart_diff: string; input_tokens: number; output_tokens: number }
+	| {
+			type: "result";
+			summary: string;
+			smart_diff: string;
+			input_tokens?: number;
+			output_tokens?: number;
+	  }
 	| { type: "error"; message: string };
 
 export interface MeatResult {
@@ -49,14 +55,18 @@ export interface MeatResult {
 	outputTokens: number;
 }
 
-export function toPiContext(request: GenerateRequest): { messages: Message[]; tools: Tool[] } {
+export function toPiContext(request: GenerateRequest): {
+	messages: Message[];
+	tools: Tool[];
+} {
 	const messages: Message[] = [];
 	const toolNames = new Map<string, string>();
 
 	for (const message of request.messages) {
 		if (message.role === "assistant") {
 			const saved = message.content.find(
-				(block) => block.type === "provider_state" && block.provider === PROVIDER_STATE,
+				(block) =>
+					block.type === "provider_state" && block.provider === PROVIDER_STATE,
 			)?.provider_data;
 			if (saved && typeof saved === "object") {
 				const assistant = saved as AssistantMessage;
@@ -69,9 +79,15 @@ export function toPiContext(request: GenerateRequest): { messages: Message[]; to
 
 			const content: AssistantMessage["content"] = [];
 			for (const block of message.content) {
-				if (block.type === "text" && block.text) content.push({ type: "text", text: block.text });
+				if (block.type === "text" && block.text)
+					content.push({ type: "text", text: block.text });
 				if (block.type === "tool_use" && block.id && block.tool_name) {
-					content.push({ type: "toolCall", id: block.id, name: block.tool_name, arguments: asObject(block.tool_input) });
+					content.push({
+						type: "toolCall",
+						id: block.id,
+						name: block.tool_name,
+						arguments: asObject(block.tool_input),
+					});
 					toolNames.set(block.id, block.tool_name);
 				}
 			}
@@ -82,14 +98,24 @@ export function toPiContext(request: GenerateRequest): { messages: Message[]; to
 				provider: "pi-meat",
 				model: "bridge",
 				usage: emptyUsage(),
-				stopReason: content.some((part) => part.type === "toolCall") ? "toolUse" : "stop",
+				stopReason: content.some((part) => part.type === "toolCall")
+					? "toolUse"
+					: "stop",
 				timestamp: Date.now(),
 			});
 			continue;
 		}
 
-		const text = message.content.filter((block) => block.type === "text").map((block) => block.text ?? "").join("\n");
-		if (text) messages.push({ role: "user", content: [{ type: "text", text }], timestamp: Date.now() });
+		const text = message.content
+			.filter((block) => block.type === "text")
+			.map((block) => block.text ?? "")
+			.join("\n");
+		if (text)
+			messages.push({
+				role: "user",
+				content: [{ type: "text", text }],
+				timestamp: Date.now(),
+			});
 		for (const block of message.content) {
 			if (block.type !== "tool_result" || !block.tool_use_id) continue;
 			messages.push({
@@ -115,18 +141,31 @@ export function toPiContext(request: GenerateRequest): { messages: Message[]; to
 }
 
 export function fromPiResponse(response: AssistantMessage): WireBlock[] {
-	const blocks: WireBlock[] = [{ type: "provider_state", provider: PROVIDER_STATE, provider_data: response }];
+	const blocks: WireBlock[] = [
+		{
+			type: "provider_state",
+			provider: PROVIDER_STATE,
+			provider_data: response,
+		},
+	];
 	for (const part of response.content) {
 		if (part.type === "text") blocks.push({ type: "text", text: part.text });
 		if (part.type === "toolCall") {
-			blocks.push({ type: "tool_use", id: part.id, tool_name: part.name, tool_input: part.arguments });
+			blocks.push({
+				type: "tool_use",
+				id: part.id,
+				tool_name: part.name,
+				tool_input: part.arguments,
+			});
 		}
 	}
 	return blocks;
 }
 
 function asObject(value: unknown): Record<string, unknown> {
-	return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+	return value && typeof value === "object" && !Array.isArray(value)
+		? (value as Record<string, unknown>)
+		: {};
 }
 
 function emptyUsage() {

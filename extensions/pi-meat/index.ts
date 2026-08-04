@@ -1,7 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname } from "node:path";
 import { completeSimple } from "@earendil-works/pi-ai/compat";
 import type {
 	ExtensionAPI,
@@ -12,11 +10,19 @@ import { BorderedLoader } from "@earendil-works/pi-coding-agent";
 import { Text, type Terminal } from "@earendil-works/pi-tui";
 import { runBridge } from "./bridge.ts";
 import {
+	artifactPaths,
+	artifactRoot,
+	persistArtifacts,
+	readCache,
+	secureCacheTree,
+} from "./cache.ts";
+import {
 	toPiContext,
 	type GenerateRequest,
 	type MeatResult,
 	PROTOCOL_VERSION,
 } from "./protocol.ts";
+import { sanitizeTerminalText } from "./terminal.ts";
 import { MeatDiffViewer, type ViewerAction } from "./viewer.ts";
 import {
 	loadMeatSettings,
@@ -25,7 +31,7 @@ import {
 } from "./settings.ts";
 
 const BRAND = "🥩 pi-meat";
-const CACHE_VERSION = `bridge-${PROTOCOL_VERSION}`;
+const CACHE_VERSION = `bridge-${PROTOCOL_VERSION}-diff-only-v2`;
 
 interface ArtifactEntry {
 	summary: string;
@@ -43,7 +49,7 @@ export default function piMeat(pi: ExtensionAPI) {
 		const data = entry.data as ArtifactEntry;
 		return new Text(
 			`${theme.fg("accent", theme.bold(BRAND))} ${theme.fg("muted", data.cached ? "cached" : `${data.inputTokens + data.outputTokens} tokens`)}\n` +
-				`${theme.fg("text", data.summary)}\n${theme.fg("dim", `${data.source} · ${data.model} · ${data.readingPath}`)}`,
+				`${theme.fg("text", sanitizeTerminalText(data.summary))}\n${theme.fg("dim", sanitizeTerminalText(`${data.source} · ${data.model} · ${data.readingPath}`))}`,
 			1,
 			0,
 		);
@@ -93,6 +99,7 @@ export default function piMeat(pi: ExtensionAPI) {
 					.update(diff)
 					.digest("hex");
 				const cacheRoot = artifactRoot(key);
+				await secureCacheTree(dirname(cacheRoot));
 				const cacheEntry = parsedArgs.fresh
 					? undefined
 					: await readCache(cacheRoot);
@@ -111,7 +118,6 @@ export default function piMeat(pi: ExtensionAPI) {
 
 							const nestedSessionId = randomUUID();
 							return runBridge({
-								repoRoot,
 								diff,
 								signal,
 								onProgress: progress,
@@ -213,7 +219,9 @@ export default function piMeat(pi: ExtensionAPI) {
 			} catch (error) {
 				ctx.ui.setStatus("pi-meat", undefined);
 				ctx.ui.notify(
-					error instanceof Error ? error.message : String(error),
+					sanitizeTerminalText(
+						error instanceof Error ? error.message : String(error),
+					),
 					"error",
 				);
 			}
@@ -255,7 +263,9 @@ async function openMeatSettingsSafely(ctx: ExtensionContext): Promise<void> {
 		await openMeatSettings(ctx);
 	} catch (error) {
 		ctx.ui.notify(
-			error instanceof Error ? error.message : String(error),
+			sanitizeTerminalText(
+				error instanceof Error ? error.message : String(error),
+			),
 			"error",
 		);
 	}
@@ -275,18 +285,20 @@ async function runWithLoader(
 			const loader = new BorderedLoader(
 				tui,
 				theme,
-				`${BRAND} · abridging ${source} with ${model}`,
+				`${BRAND} · abridging ${sanitizeTerminalText(source)} with ${sanitizeTerminalText(model)}`,
 				{ cancellable: true },
 			);
 			loader.onAbort = () => done(null);
 			const progress = (message: string) =>
-				ctx.ui.setStatus("pi-meat", `🥩 ${message}`);
+				ctx.ui.setStatus("pi-meat", `🥩 ${sanitizeTerminalText(message)}`);
 			run(loader.signal, progress)
 				.then(done)
 				.catch((error) => {
 					if (!loader.signal.aborted)
 						ctx.ui.notify(
-							error instanceof Error ? error.message : String(error),
+							sanitizeTerminalText(
+								error instanceof Error ? error.message : String(error),
+							),
 							"error",
 						);
 					done(null);
@@ -315,6 +327,8 @@ async function readGitDiff(
 	cwd: string,
 	source: string,
 ): Promise<{ diff: string; source: string }> {
+	if (source.startsWith("-"))
+		throw new Error("Git source cannot start with '-'");
 	let args: string[];
 	if (source === "staged")
 		args = ["diff", "--staged", "--no-ext-diff", "--no-color"];
@@ -351,86 +365,4 @@ function parseArgs(raw: string): { source: string; fresh: boolean } {
 		);
 	const value = tokens[0] ?? "HEAD";
 	return { source: value === "w" ? "worktree" : value, fresh };
-}
-
-interface ArtifactPaths {
-	root: string;
-	cacheRoot: string;
-	generation: string;
-	result: string;
-	reading: string;
-	original: string;
-}
-
-function artifactRoot(key: string): string {
-	return join(
-		process.env.PI_MEAT_CACHE ??
-			join(homedir(), ".pi", "agent", "cache", "pi-meat"),
-		key,
-	);
-}
-
-function artifactPaths(root: string, generation: string): ArtifactPaths {
-	const generationRoot = join(root, "generations", generation);
-	return {
-		root: generationRoot,
-		cacheRoot: root,
-		generation,
-		result: join(generationRoot, "result.json"),
-		reading: join(generationRoot, "reading.diff"),
-		original: join(generationRoot, "original.diff"),
-	};
-}
-
-async function readCache(
-	root: string,
-): Promise<{ result: MeatResult; paths: ArtifactPaths } | undefined> {
-	try {
-		const manifest = JSON.parse(
-			await readFile(join(root, "current.json"), "utf8"),
-		) as { generation?: unknown };
-		if (
-			typeof manifest.generation !== "string" ||
-			!/^[a-zA-Z0-9-]+$/.test(manifest.generation)
-		)
-			return undefined;
-		const paths = artifactPaths(root, manifest.generation);
-		const result = JSON.parse(
-			await readFile(paths.result, "utf8"),
-		) as MeatResult;
-		return typeof result.smartDiff === "string" &&
-			typeof result.summary === "string"
-			? { result, paths }
-			: undefined;
-	} catch {
-		return undefined;
-	}
-}
-
-async function persistArtifacts(
-	paths: ArtifactPaths,
-	result: MeatResult,
-	original: string,
-	metadata: { source: string; model: string },
-): Promise<void> {
-	await mkdir(paths.root, { recursive: true });
-	await Promise.all([
-		atomicWrite(paths.reading, result.smartDiff),
-		atomicWrite(paths.original, original),
-	]);
-	await atomicWrite(
-		paths.result,
-		`${JSON.stringify({ ...result, ...metadata }, null, 2)}\n`,
-	);
-	// Atomic manifest switch publishes one immutable generation as complete snapshot.
-	await atomicWrite(
-		join(paths.cacheRoot, "current.json"),
-		`${JSON.stringify({ generation: paths.generation })}\n`,
-	);
-}
-
-async function atomicWrite(path: string, content: string): Promise<void> {
-	const temporary = `${path}.${process.pid}.${randomUUID()}.tmp`;
-	await writeFile(temporary, content, "utf8");
-	await rename(temporary, path);
 }

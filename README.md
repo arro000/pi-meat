@@ -4,49 +4,72 @@
 
 ### Read the change. Skip the gristle
 
-A navigable reading-diff experience for [Pi](https://pi.dev), powered by [Meat](https://meat.dev) and the model subscription you already use in Pi.
+Navigable reading diffs for [Pi](https://pi.dev), powered by [Meat](https://meat.dev) and model subscription already used in Pi.
+
+[![CI](https://github.com/arro000/pi-meat/actions/workflows/ci.yml/badge.svg)](https://github.com/arro000/pi-meat/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/%40arro000%2Fpi-meat)](https://www.npmjs.com/package/@arro000/pi-meat)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+
+![pi-meat preview](assets/pi-meat-preview.png)
 
 </div>
 
 ## Why pi-meat?
 
-Agent-written changes can be large even when their core idea is small. Meat reduces a unified diff to the lines a senior engineer needs for understanding behavior, data flow, and architecture. pi-meat keeps that engine intact and adds:
+Agent-written changes can be large even when core idea is small. Meat reduces unified diff to lines needed to understand behavior, data flow, and architecture. pi-meat keeps original diff one key away and adds:
 
-- your active Pi model and subscription—no second API key;
-- a keyboard-driven file and diff viewer;
-- instant switching between Meat's reading diff and the immutable original;
-- cached, inspectable artifacts;
-- a one-key handoff from reading to a verification-oriented Pi review.
+- active Pi model/subscription—no second API key;
+- syntax-aware keyboard and mouse diff viewer;
+- reading/original toggle and synchronized side-by-side panes;
+- private local artifacts for inspection;
+- one-key handoff to verification-oriented Pi review.
 
-> Meat abridges diffs; it does not prove correctness. pi-meat's review handoff explicitly asks Pi to verify findings against the original diff and repository source.
+> Meat abridges diffs; it does not prove correctness. Review handoff asks Pi to verify findings against original diff and repository source.
 
 ## Status
 
-Early MVP. The bridge, subscription adapter, cache, viewer, and review handoff are implemented. See [PLAN.md](PLAN.md) for the roadmap.
+`0.1.x` is early public release. Commands, cache layout, and bridge protocol may evolve before `1.0.0`. See [changelog](CHANGELOG.md) and [roadmap](PLAN.md).
 
-## Install for development
+## Requirements
 
-Requirements: Pi, Node.js 24+, Go 1.24+, and Git.
+- Pi
+- Node.js 24+
+- Go 1.24.13+
+- Git
+
+Current npm package ships bridge source and falls back to `go run`; prebuilt helper binaries are planned.
+
+## Install
+
+From npm (recommended after `0.1.0` publication):
 
 ```bash
-npm install
-pi -e .
+pi install npm:@arro000/pi-meat
 ```
 
-The first run uses `go run` and may download the pinned `meat.dev` module. For faster startup:
+Pin exact release:
 
 ```bash
-npm run build:bridge
-pi -e .
+pi install npm:@arro000/pi-meat@0.1.0
 ```
 
-A future release will ship prebuilt bridge binaries.
+Install tagged Git source:
+
+```bash
+pi install git:github.com/arro000/pi-meat@v0.1.0
+```
+
+Try without persistent install:
+
+```bash
+pi -e npm:@arro000/pi-meat
+```
+
+Packages execute with full user permissions. Review source and [security policy](SECURITY.md) before installation.
 
 ## Usage
 
-Authenticate and select desired model in Pi. Meat uses Pi's active model by default. Set persistent Meat model with `/meat-settings` or `Ctrl+Shift+M`; picker lists authenticated Pi models. `/meat settings` remains an alias. Settings live in `~/.pi/agent/pi-meat.json` (override with `PI_MEAT_SETTINGS`).
-
-Then:
+Authenticate and select desired model in Pi. Meat uses active Pi model by default. Set persistent Meat model with `/meat-settings` or `Ctrl+Shift+M`; `/meat settings` remains alias. Settings live in `~/.pi/agent/pi-meat.json` (override with `PI_MEAT_SETTINGS`).
 
 ```text
 /meat                         latest commit
@@ -54,8 +77,8 @@ Then:
 /meat worktree                unstaged changes
 /meat all                     staged + unstaged changes
 /meat main...HEAD             branch diff
-/meat <revision>              a specific commit
-/meat HEAD --fresh            bypass pi-meat's cache
+/meat <revision>              specific commit
+/meat HEAD --fresh            bypass current cache entry
 ```
 
 ### Viewer keys
@@ -63,7 +86,8 @@ Then:
 | Key | Action |
 | --- | --- |
 | `j` / `k`, `↑` / `↓` | Scroll vertically |
-| `h` / `l`, `←` / `→` | Scroll source horizontally in synchronized panes |
+| `h` / `l`, `←` / `→` | Scroll source horizontally |
+| Horizontal wheel / `Shift` + wheel | Scroll source horizontally with supported terminals/mice |
 | `PgUp` / `PgDn`, `Home` / `End` | Page or jump through current file |
 | `n` / `p` | Next / previous changed file |
 | `s` | Toggle side-by-side / unified layout |
@@ -74,38 +98,65 @@ Then:
 | `?` | Toggle help |
 | `q` / `Esc` | Close |
 
-Wide terminals render changed-file sidebar plus old/new panes. Medium terminals keep full-width side-by-side panes. Narrow terminals automatically use unified layout. Click sidebar entries to select files; mouse wheel scrolls changes. Hold Shift for terminal-native text selection while mouse reporting is active. Source code uses file-aware syntax highlighting; line numbers and `+`/`-` gutters preserve diff semantics. Footer always shows primary navigation keys plus current line and column ranges.
+Wide terminals show file sidebar and old/new panes. Medium terminals keep full-width side-by-side panes. Narrow terminals switch to unified layout. Hold `Shift` for terminal-native selection when mouse reporting is active.
 
 ## How subscription reuse works
 
-The Go process runs Meat's original `Abridge` engine but has no provider credentials. At every `meat.Model.Generate` call it sends provider-neutral messages and tools over a local JSONL pipe. The extension performs that request in-process through `pi-ai` using configured Meat model and Pi's resolved authentication, then returns the assistant response to Meat.
+Go helper runs original Meat `Abridge` engine without provider credentials. At each `meat.Model.Generate`, it sends provider-neutral messages/tools over local versioned JSONL pipe. Extension performs model request in Pi process through `pi-ai`, then returns assistant response to Meat.
 
 ```text
-meat.Abridge → JSONL bridge → pi-ai → active Pi subscription
+meat.Abridge → local JSONL helper → pi-ai → configured Pi provider
 ```
 
-Full provider response state is preserved between Meat turns, while Meat remains responsible for its own tools, validation, chunking, folds, and elisions.
+Repository read/grep tools are disabled. Model receives selected Git diff and abridgement conversation, not unrelated repository files. Full provider response state remains in model conversation while Meat handles validation, chunking, folds, and elisions.
 
-## Privacy and artifacts
+See [architecture](docs/ARCHITECTURE.md) and [privacy/data flow](docs/PRIVACY.md).
 
-- Credentials never enter bridge messages or cache files.
-- Source diffs are sent to the active model provider, just as with other Pi model calls.
-- Cached artifacts live under `~/.pi/agent/cache/pi-meat/` by default.
-- Override the cache root with `PI_MEAT_CACHE`.
-- Override the helper executable with `PI_MEAT_BRIDGE=/path/to/pi-meat-bridge`.
+## Privacy and local artifacts
+
+- Provider credentials are not intentionally passed to helper; they are excluded from helper environment, JSONL, and cache.
+- Helper is trusted, unsandboxed code running with same OS user permissions.
+- Selected diff is sent to configured model provider.
+- Cache defaults to `~/.pi/agent/cache/pi-meat/`.
+- POSIX cache directories/files use owner-only permissions (`0700` / `0600`).
+- Cache is plaintext and has no automatic expiry yet.
+- Override cache root with `PI_MEAT_CACHE`.
+- Override helper only with trusted executable via `PI_MEAT_BRIDGE=/path/to/pi-meat-bridge`.
+
+Delete default cache:
+
+```bash
+rm -rf ~/.pi/agent/cache/pi-meat
+```
 
 ## Development
 
 ```bash
-npm test
-npm run check
+git clone https://github.com/arro000/pi-meat.git
+cd pi-meat
+npm ci
+npm run release:check
+pi -e .
+```
+
+Build helper for faster startup:
+
+```bash
 npm run build:bridge
 ```
 
+Contributions: [CONTRIBUTING.md](CONTRIBUTING.md) · Support: [SUPPORT.md](SUPPORT.md) · Security: [SECURITY.md](SECURITY.md) · Releases: [docs/RELEASING.md](docs/RELEASING.md)
+
+## Publishing and Pi catalog
+
+Package publishes as [`@arro000/pi-meat`](https://www.npmjs.com/package/@arro000/pi-meat) with npm provenance. Pi catalog automatically discovers public npm packages tagged `pi-package`; no manual submission is documented. Catalog indexing has no published SLA.
+
+After release, verify [package page](https://pi.dev/packages/@arro000/pi-meat). Full maintainer procedure: [docs/RELEASING.md](docs/RELEASING.md).
+
 ## Naming and attribution
 
-pi-meat is an independent Pi integration. It is not affiliated with or endorsed by Bold Software, Inc. Meat is licensed under Apache-2.0; see [NOTICE](NOTICE).
+pi-meat is independent integration. It is not affiliated with or endorsed by Pi maintainers or Bold Software, Inc. Meat is licensed under Apache-2.0; see [NOTICE](NOTICE). Brand usage: [docs/BRAND.md](docs/BRAND.md).
 
 ## License
 
-Apache-2.0 © 2026 arro000
+[Apache-2.0](LICENSE) © 2026 arro000

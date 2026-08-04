@@ -15,6 +15,7 @@ import {
 	type SelectItem,
 	type SettingItem,
 } from "@earendil-works/pi-tui";
+import { sanitizeTerminalText } from "./terminal.ts";
 
 export interface MeatSettings {
 	defaultModel?: string;
@@ -70,7 +71,7 @@ export async function resolveMeatModel(
 	ctx: ExtensionContext,
 	configured: string | undefined,
 ) {
-	const available = ctx.modelRegistry.getAvailable();
+	const available = ctx.modelRegistry.getAvailable().filter(isSafeModel);
 	if (configured) {
 		const selected = available.find(
 			(model) => `${model.provider}/${model.id}` === configured,
@@ -89,6 +90,11 @@ export async function resolveMeatModel(
 		: undefined;
 }
 
+function isSafeModel(model: { provider: string; id: string }): boolean {
+	const key = `${model.provider}/${model.id}`;
+	return sanitizeTerminalText(key) === key;
+}
+
 export async function openMeatSettings(ctx: ExtensionContext): Promise<void> {
 	if (ctx.mode !== "tui") {
 		ctx.ui.notify("/meat settings requires Pi TUI", "error");
@@ -96,9 +102,11 @@ export async function openMeatSettings(ctx: ExtensionContext): Promise<void> {
 	}
 
 	const settings = await loadMeatSettings();
-	const available = [...ctx.modelRegistry.getAvailable()].sort((a, b) =>
-		`${a.provider}/${a.id}`.localeCompare(`${b.provider}/${b.id}`),
-	);
+	const available = [...ctx.modelRegistry.getAvailable()]
+		.filter(isSafeModel)
+		.sort((a, b) =>
+			`${a.provider}/${a.id}`.localeCompare(`${b.provider}/${b.id}`),
+		);
 	if (available.length === 0) {
 		ctx.ui.notify("No authenticated Pi models available", "error");
 		return;
@@ -130,8 +138,8 @@ export async function openMeatSettings(ctx: ExtensionContext): Promise<void> {
 		let pendingSave: Promise<void> = Promise.resolve();
 		const modelItems: SelectItem[] = available.map((model) => ({
 			value: `${model.provider}/${model.id}`,
-			label: `${model.provider}/${model.id}`,
-			description: model.name,
+			label: sanitizeTerminalText(`${model.provider}/${model.id}`),
+			description: sanitizeTerminalText(model.name),
 		}));
 		const items: SettingItem[] = [
 			{
@@ -163,10 +171,14 @@ export async function openMeatSettings(ctx: ExtensionContext): Promise<void> {
 				pendingSave = pendingSave
 					.then(() => saveMeatSettings(snapshot))
 					.then(
-						() => ctx.ui.setStatus("pi-meat", `🥩 model: ${value}`),
+						() =>
+							ctx.ui.setStatus(
+								"pi-meat",
+								`🥩 model: ${sanitizeTerminalText(value)}`,
+							),
 						(error) =>
 							ctx.ui.notify(
-								`Could not save settings: ${error instanceof Error ? error.message : String(error)}`,
+								`Could not save settings: ${sanitizeTerminalText(error instanceof Error ? error.message : String(error))}`,
 								"error",
 							),
 					);

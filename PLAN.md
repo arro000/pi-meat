@@ -7,7 +7,7 @@ pi-meat turns Meat's abridgement engine into a first-class Pi reading experience
 ## Architecture
 
 1. **Git source adapter** selects HEAD, a revision/range, staged, unstaged, or all local changes.
-2. **Go bridge** imports `meat.dev/meat` and implements only its `Model` boundary over versioned JSONL.
+2. **Go bridge** imports `meat.dev/meat`, disables repository read/grep tools, and implements only its `Model` boundary over versioned JSONL.
 3. **Pi model adapter** converts Meat messages/tools to `pi-ai`, preserving the full assistant response as opaque provider state between Meat turns.
 4. **Artifact cache** keys immutable input + active model + bridge protocol and stores original/reading diffs outside the repository.
 5. **TUI viewer** navigates files and lines, folds files, toggles original/reading views, and hands review back to Pi.
@@ -24,7 +24,9 @@ pi-meat turns Meat's abridgement engine into a first-class Pi reading experience
 - [ ] Interactive source picker
 - [x] Responsive side-by-side mode with changed-file sidebar
 - [ ] Search and hunk-level review handoff
-- [ ] Prebuilt bridge binaries and release automation
+- [x] Open-source governance, security/privacy docs, and npm release automation
+- [x] Helper environment isolation, strict protocol validation, and private cache permissions
+- [ ] Prebuilt signed bridge binaries
 - [ ] End-to-end PTY/TUI tests against a fake model
 
 ## Validation contract for the MVP

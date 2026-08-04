@@ -1,0 +1,70 @@
+name: Bug report
+description: Report reproducible pi-meat problem
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Remove credentials, source code, diffs, model output, private paths, and repository details from logs.
+        Security vulnerability must use private reporting linked in SECURITY.md.
+  - type: input
+    id: version
+    attributes:
+      label: pi-meat version
+      placeholder: 0.1.0 or commit SHA
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Pi, Node.js, Go, Git, OS, and terminal versions
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: Install source
+      options:
+        - npm
+        - Git
+        - Local path
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction
+      description: Minimal sanitized steps and source selector used
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Sanitized exact error or output
+    validations:
+      required: true
+  - type: textarea
+    id: variables
+    attributes:
+      label: PI_MEAT variables
+      description: Names only unless values are safe; never paste secrets
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues.
+          required: true
+        - label: I removed credentials and private source from this report.
+          required: true
+        - label: This is not a security vulnerability.
+          required: true

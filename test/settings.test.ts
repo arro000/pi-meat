@@ -38,6 +38,19 @@ test("rejects unavailable configured model instead of silently switching provide
 	);
 });
 
+test("rejects model keys containing terminal controls", async () => {
+	const unsafe = { provider: "evil\u001b[31m", id: "model" };
+	const ctx = {
+		modelRegistry: { getAvailable: () => [unsafe] },
+		model: unsafe,
+	} as unknown as ExtensionContext;
+	await assert.rejects(
+		resolveMeatModel(ctx, `${unsafe.provider}/${unsafe.id}`),
+		/Configured pi-meat model is unavailable/,
+	);
+	assert.equal(await resolveMeatModel(ctx, undefined), undefined);
+});
+
 test("rejects malformed settings instead of silently switching model", async () => {
 	const directory = await mkdtemp(join(tmpdir(), "pi-meat-settings-invalid-"));
 	const path = join(directory, "settings.json");

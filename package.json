@@ -1,10 +1,14 @@
 {
   "name": "@arro000/pi-meat",
   "version": "0.1.0",
-  "description": "A navigable reading-diff experience for Pi, powered by Meat and your Pi subscription.",
+  "description": "Read code changes without the gristle: navigable reading diffs for Pi, powered by Meat.",
   "type": "module",
   "license": "Apache-2.0",
-  "author": "arro000",
+  "author": {
+    "name": "arro000",
+    "email": "arrighi000@gmail.com",
+    "url": "https://github.com/arro000"
+  },
   "homepage": "https://github.com/arro000/pi-meat#readme",
   "repository": {
     "type": "git",
@@ -31,21 +35,35 @@
     "extensions",
     "internal",
     "bridge",
+    "assets",
+    "docs",
+    "scripts",
     "README.md",
+    "CHANGELOG.md",
+    "CODE_OF_CONDUCT.md",
+    "CONTRIBUTING.md",
+    "GOVERNANCE.md",
     "PLAN.md",
+    "SECURITY.md",
+    "SUPPORT.md",
     "LICENSE",
     "NOTICE"
   ],
   "scripts": {
-    "build:bridge": "mkdir -p bin && go -C bridge build -o ../bin/pi-meat-bridge .",
-    "check": "tsc --noEmit && go -C bridge test ./...",
+    "assets:build": "node scripts/generate-preview.mjs",
+    "build:bridge": "node scripts/build-bridge.mjs",
+    "check": "tsc --noEmit && go -C bridge test ./... && go -C bridge vet ./...",
     "test": "node --test test/*.test.ts && go -C bridge test ./...",
-    "format:check": "gofmt -l bridge | tee /tmp/pi-meat-gofmt && test ! -s /tmp/pi-meat-gofmt"
+    "format:check": "node scripts/check-go-format.mjs",
+    "package:smoke": "node scripts/package-smoke.mjs",
+    "release:check": "npm test && npm run check && npm run format:check && npm audit --omit=dev --audit-level=high && npm run package:smoke",
+    "prepublishOnly": "npm run release:check"
   },
   "pi": {
     "extensions": [
       "./extensions/pi-meat/index.ts"
-    ]
+    ],
+    "image": "https://raw.githubusercontent.com/arro000/pi-meat/main/assets/pi-meat-preview.png"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",
