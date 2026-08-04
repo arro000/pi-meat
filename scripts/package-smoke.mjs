@@ -32,7 +32,9 @@ try {
 	if (packed.error) throw packed.error;
 	if (packed.status !== 0) throw new Error(packed.stderr || "npm pack failed");
 	const report = JSON.parse(packed.stdout);
-	archive = join(root, report[0].filename);
+	const [packageReport] = Array.isArray(report) ? report : Object.values(report);
+	if (!packageReport?.filename) throw new Error("npm pack returned no package");
+	archive = join(root, packageReport.filename);
 	temporary = mkdtempSync(join(tmpdir(), "pi-meat-package-"));
 	writeFileSync(
 		join(temporary, "package.json"),
