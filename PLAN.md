@@ -20,8 +20,9 @@ pi-meat turns Meat's abridgement engine into a first-class Pi reading experience
 - [x] Git source selection and cache artifacts
 - [x] Navigable reading/original diff viewer
 - [x] Review handoff to Pi
-- [ ] Interactive source and model pickers
-- [ ] Side-by-side mode for wide terminals
+- [x] Interactive persistent model picker
+- [ ] Interactive source picker
+- [x] Responsive side-by-side mode with changed-file sidebar
 - [ ] Search and hunk-level review handoff
 - [ ] Prebuilt bridge binaries and release automation
 - [ ] End-to-end PTY/TUI tests against a fake model

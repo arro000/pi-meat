@@ -2,7 +2,7 @@
 
 # 🥩 pi-meat
 
-### Read the change. Skip the gristle.
+### Read the change. Skip the gristle
 
 A navigable reading-diff experience for [Pi](https://pi.dev), powered by [Meat](https://meat.dev) and the model subscription you already use in Pi.
 
@@ -44,7 +44,9 @@ A future release will ship prebuilt bridge binaries.
 
 ## Usage
 
-Authenticate and select the desired model in Pi, then:
+Authenticate and select desired model in Pi. Meat uses Pi's active model by default. Set persistent Meat model with `/meat-settings` or `Ctrl+Shift+M`; picker lists authenticated Pi models. `/meat settings` remains an alias. Settings live in `~/.pi/agent/pi-meat.json` (override with `PI_MEAT_SETTINGS`).
+
+Then:
 
 ```text
 /meat                         latest commit
@@ -61,16 +63,20 @@ Authenticate and select the desired model in Pi, then:
 | Key | Action |
 | --- | --- |
 | `j` / `k`, `↑` / `↓` | Scroll |
-| `n` / `p` | Next / previous file |
+| `PgUp` / `PgDn`, `Home` / `End` | Page or jump through current file |
+| `n` / `p`, `←` / `→` | Next / previous changed file |
+| `s` | Toggle side-by-side / unified layout |
 | `Space` | Fold / unfold current file |
 | `Tab` | Toggle reading / original diff |
-| `r` | Close viewer and ask Pi for a verified review |
+| `r` | Close viewer and ask Pi for verified review |
 | `?` | Toggle help |
 | `q` / `Esc` | Close |
 
+Wide terminals render changed-file sidebar plus old/new panes. Medium terminals keep full-width side-by-side panes. Narrow terminals automatically use unified layout.
+
 ## How subscription reuse works
 
-The Go process runs Meat's original `Abridge` engine but has no provider credentials. At every `meat.Model.Generate` call it sends provider-neutral messages and tools over a local JSONL pipe. The extension performs that request in-process through `pi-ai` using `ctx.model` and Pi's resolved authentication, then returns the assistant response to Meat.
+The Go process runs Meat's original `Abridge` engine but has no provider credentials. At every `meat.Model.Generate` call it sends provider-neutral messages and tools over a local JSONL pipe. The extension performs that request in-process through `pi-ai` using configured Meat model and Pi's resolved authentication, then returns the assistant response to Meat.
 
 ```text
 meat.Abridge → JSONL bridge → pi-ai → active Pi subscription
