@@ -18,11 +18,12 @@ test("loads validated settings and treats missing file as defaults", async () =>
 		assert.deepEqual(await loadMeatSettings(), {});
 		await writeFile(
 			path,
-			'{"defaultModel":"provider/model","thinkingLevel":"high"}\n',
+			'{"defaultModel":"provider/model","thinkingLevel":"high","startupMode":"on-demand"}\n',
 		);
 		assert.deepEqual(await loadMeatSettings(), {
 			defaultModel: "provider/model",
 			thinkingLevel: "high",
+			startupMode: "on-demand",
 		});
 	} finally {
 		if (previous === undefined) delete process.env.PI_MEAT_SETTINGS;
@@ -67,6 +68,8 @@ test("rejects malformed settings instead of silently switching model", async () 
 		await assert.rejects(loadMeatSettings(), /defaultModel must be a string/);
 		await writeFile(path, '{"thinkingLevel":"turbo"}\n');
 		await assert.rejects(loadMeatSettings(), /thinkingLevel/);
+		await writeFile(path, '{"startupMode":"later"}\n');
+		await assert.rejects(loadMeatSettings(), /startupMode/);
 	} finally {
 		if (previous === undefined) delete process.env.PI_MEAT_SETTINGS;
 		else process.env.PI_MEAT_SETTINGS = previous;

@@ -105,8 +105,38 @@ test("shows Meat progress until the reading diff is ready", () => {
 
 	viewer.setReading(diff, "Focused review");
 	const ready = viewer.render(98);
+	assert.ok(ready.some((line) => line.includes("READING ✨")));
 	assert.ok(ready.some((line) => line.includes("Focused review")));
 	assert.ok(ready.some((line) => line.includes("old one")));
+});
+
+test("starts Meat only when requested from the on-demand reading view", () => {
+	let starts = 0;
+	const viewer = new MeatDiffViewer({
+		theme,
+		summary: "",
+		originalDiff: diff,
+		modelLabel: "provider/model",
+		onDemand: true,
+		startReading: () => starts++,
+		viewportHeight: () => 10,
+		done: () => {},
+	});
+
+	assert.ok(
+		viewer.render(98).some((line) => line.includes("Meat is on demand")),
+	);
+	viewer.handleInput("\t");
+	assert.ok(viewer.render(98).some((line) => line.includes("Start Meat?")));
+	viewer.handleInput("\r");
+	viewer.handleInput("\r");
+	assert.equal(starts, 1);
+	assert.ok(
+		viewer.render(98).some((line) => line.includes("Meat is processing")),
+	);
+
+	viewer.setReading(diff, "Ready on demand");
+	assert.ok(viewer.render(98).some((line) => line.includes("READING ✨")));
 });
 
 test("keeps the original diff available when reading generation fails", () => {
@@ -196,7 +226,7 @@ test("toggles side-by-side and unified layout with s", () => {
 	assert.ok(viewer.render(98).some((line) => line.includes("SIDE-BY-SIDE")));
 	viewer.handleInput("s");
 	assert.ok(viewer.render(98).some((line) => line.includes("UNIFIED")));
-	const layoutColumn = visibleWidth("🥩 pi-meat  READING  ORIGINAL  ") + 1;
+	const layoutColumn = visibleWidth("🥩 pi-meat  READING ✨  ORIGINAL  ") + 1;
 	viewer.handleInput(`\x1b[<0;${layoutColumn};1M`);
 	assert.ok(viewer.render(98).some((line) => line.includes("SIDE-BY-SIDE")));
 });

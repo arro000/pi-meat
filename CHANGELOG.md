@@ -4,6 +4,17 @@ All notable changes to pi-meat are documented here. Format follows [Keep a Chang
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-05
+
+### Added
+
+- Add configurable `default` and `on-demand` Meat startup modes.
+- Keep generation status visible in the diff viewer and mark a ready reading diff with `✨`.
+
+### Changed
+
+- Defer provider authentication and Meat generation until requested in `on-demand` mode.
+
 ## [0.2.0] - 2026-08-05
 
 ### Added
@@ -52,7 +63,8 @@ All notable changes to pi-meat are documented here. Format follows [Keep a Chang
 - Restricted cache directories/files to owner-only POSIX permissions.
 - Added strict bridge event validation, protocol negotiation, and terminal-text sanitization.
 
-[Unreleased]: https://github.com/arro000/pi-meat/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/arro000/pi-meat/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/arro000/pi-meat/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/arro000/pi-meat/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/arro000/pi-meat/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/arro000/pi-meat/releases/tag/v0.1.0

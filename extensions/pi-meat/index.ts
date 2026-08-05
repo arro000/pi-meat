@@ -183,22 +183,20 @@ export default function piMeat(pi: ExtensionAPI) {
 				let paths = cacheEntry?.paths;
 				const cached = result !== undefined;
 
-				const auth = result
-					? undefined
-					: await ctx.modelRegistry.getApiKeyAndHeaders(model);
-				if (auth && !auth.ok) throw new Error(auth.error);
-
 				let viewer: MeatDiffViewer | undefined;
 				let computation: Promise<void> | undefined;
 				const controller = new AbortController();
 				const action = await ctx.ui.custom<ViewerAction>(
 					(tui, theme, _keybindings, done) => {
+						let startComputation = () => {};
 						const createdViewer = new MeatDiffViewer({
 							theme,
 							summary: result?.summary ?? "",
 							originalDiff: diff,
 							readingDiff: result?.smartDiff,
 							modelLabel: meatModelLabel,
+							onDemand: settings.startupMode === "on-demand" && !result,
+							startReading: () => startComputation(),
 							viewportHeight: () => Math.max(8, tui.terminal.rows - 9),
 							done,
 							requestRender: () => tui.requestRender(),
@@ -226,71 +224,76 @@ export default function piMeat(pi: ExtensionAPI) {
 						});
 						viewer = createdViewer;
 
-						if (!result && auth?.ok) {
-							const nestedSessionId = randomUUID();
+						startComputation = () => {
+							if (result || computation) return;
+							createdViewer.setProgress("Starting Meat…");
 							ctx.ui.setStatus("pi-meat", "🥩 Starting Meat…");
-							computation = runBridge({
-								diff,
-								signal: controller.signal,
-								onProgress: (message) => {
-									createdViewer.setProgress(message);
-									ctx.ui.setStatus(
-										"pi-meat",
-										`🥩 ${sanitizeTerminalText(message)}`,
-									);
-									tui.requestRender();
-								},
-								onGenerate: async (request: GenerateRequest) => {
-									const meatContext = toPiContext(request);
-									const response = await completeSimple(
-										model,
-										{ systemPrompt: request.system, ...meatContext },
-										{
-											apiKey: auth.apiKey,
-											headers: auth.headers,
-											env: auth.env,
-											signal: controller.signal,
-											reasoning:
-												thinkingLevel === "off" ? undefined : thinkingLevel,
-											cacheRetention: "short",
-											sessionId: nestedSessionId,
-										},
-									);
-									if (response.stopReason === "error")
-										throw new Error(
-											response.errorMessage ?? "Pi model call failed",
+							computation = (async () => {
+								const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
+								if (!auth.ok) throw new Error(auth.error);
+								const nestedSessionId = randomUUID();
+								const computed = await runBridge({
+									diff,
+									signal: controller.signal,
+									onProgress: (message) => {
+										createdViewer.setProgress(message);
+										ctx.ui.setStatus(
+											"pi-meat",
+											`🥩 ${sanitizeTerminalText(message)}`,
 										);
-									if (response.stopReason === "aborted")
-										throw new Error("Meat model call cancelled");
-									return response;
-								},
-							})
-								.then(async (computed) => {
-									const computedPaths = artifactPaths(cacheRoot, randomUUID());
-									await persistArtifacts(computedPaths, computed, diff, {
-										source,
-										model: meatModelLabel,
-									});
-									result = computed;
-									paths = computedPaths;
-									if (!controller.signal.aborted) {
-										createdViewer.setReading(
-											computed.smartDiff,
-											computed.summary,
-										);
-										ctx.ui.setStatus("pi-meat", "🥩 Reading diff ready");
 										tui.requestRender();
-									}
-								})
-								.catch((error) => {
-									if (controller.signal.aborted) return;
-									createdViewer.setReadingError(
-										error instanceof Error ? error.message : String(error),
-									);
-									ctx.ui.setStatus("pi-meat", "🥩 Reading diff failed");
-									tui.requestRender();
+									},
+									onGenerate: async (request: GenerateRequest) => {
+										const meatContext = toPiContext(request);
+										const response = await completeSimple(
+											model,
+											{ systemPrompt: request.system, ...meatContext },
+											{
+												apiKey: auth.apiKey,
+												headers: auth.headers,
+												env: auth.env,
+												signal: controller.signal,
+												reasoning:
+													thinkingLevel === "off" ? undefined : thinkingLevel,
+												cacheRetention: "short",
+												sessionId: nestedSessionId,
+											},
+										);
+										if (response.stopReason === "error")
+											throw new Error(
+												response.errorMessage ?? "Pi model call failed",
+											);
+										if (response.stopReason === "aborted")
+											throw new Error("Meat model call cancelled");
+										return response;
+									},
 								});
-						}
+								const computedPaths = artifactPaths(cacheRoot, randomUUID());
+								await persistArtifacts(computedPaths, computed, diff, {
+									source,
+									model: meatModelLabel,
+								});
+								result = computed;
+								paths = computedPaths;
+								if (!controller.signal.aborted) {
+									createdViewer.setReading(
+										computed.smartDiff,
+										computed.summary,
+									);
+									ctx.ui.setStatus("pi-meat", "🥩 Reading diff ready");
+									tui.requestRender();
+								}
+							})().catch((error) => {
+								if (controller.signal.aborted) return;
+								createdViewer.setReadingError(
+									error instanceof Error ? error.message : String(error),
+								);
+								ctx.ui.setStatus("pi-meat", "🥩 Reading diff failed");
+								tui.requestRender();
+							});
+						};
+						if (!result && settings.startupMode !== "on-demand")
+							startComputation();
 
 						const stopMouseReporting = startMouseReporting(tui.terminal);
 						return {

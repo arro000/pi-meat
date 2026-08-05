@@ -60,6 +60,8 @@ export interface MeatDiffViewerOptions {
 		currentText: string | undefined,
 	) => Promise<string | undefined>;
 	requestRender?: () => void;
+	onDemand?: boolean;
+	startReading?: () => void;
 }
 
 export class MeatDiffViewer {
@@ -85,6 +87,7 @@ export class MeatDiffViewer {
 	private summary: string;
 	private progressMessage = "Starting Meat…";
 	private readingError: string | undefined;
+	private readingStarted: boolean;
 
 	constructor(options: MeatDiffViewerOptions) {
 		this.options = options;
@@ -94,10 +97,12 @@ export class MeatDiffViewer {
 				? undefined
 				: parseUnifiedDiff(options.readingDiff);
 		this.summary = options.summary;
+		this.readingStarted = Boolean(this.reading) || !options.onDemand;
 		if (!this.reading) this.mode = "original";
 	}
 
 	setProgress(message: string): void {
+		this.readingStarted = true;
 		if (!this.reading && !this.readingError) this.progressMessage = message;
 	}
 
@@ -148,6 +153,17 @@ export class MeatDiffViewer {
 		}
 		if (matchesKey(data, Key.tab)) {
 			this.toggleMode();
+			return;
+		}
+		if (
+			matchesKey(data, Key.enter) &&
+			this.mode === "reading" &&
+			!this.reading &&
+			!this.readingError &&
+			!this.readingStarted
+		) {
+			this.readingStarted = true;
+			this.options.startReading?.();
 			return;
 		}
 		if (data === "n") {
@@ -333,19 +349,22 @@ export class MeatDiffViewer {
 
 	private renderHeader(width: number, effectiveLayout: LayoutMode): string[] {
 		const theme = this.options.theme;
+		const readingLabel = this.reading ? "READING ✨" : "READING";
 		const reading =
 			this.mode === "reading"
-				? theme.fg("accent", theme.bold("READING"))
-				: theme.fg("dim", "READING");
+				? theme.fg("accent", theme.bold(readingLabel))
+				: theme.fg("dim", readingLabel);
 		const original =
 			this.mode === "original"
 				? theme.fg("accent", theme.bold("ORIGINAL"))
 				: theme.fg("dim", "ORIGINAL");
 		const layout = effectiveLayout === "split" ? "SIDE-BY-SIDE" : "UNIFIED";
-		let detail = `Meat is processing · ${this.progressMessage}`;
-		if (this.reading) detail = this.summary || "Reading diff";
+		let detail = this.readingStarted
+			? `◌ Meat is processing · ${this.progressMessage}`
+			: "○ Meat is on demand · open Reading and press Enter to start";
+		if (this.reading) detail = `● ${this.summary || "Reading diff ready"}`;
 		else if (this.readingError)
-			detail = `Reading diff failed: ${this.readingError}`;
+			detail = `× Reading diff failed: ${this.readingError}`;
 		return [
 			fit(
 				`${theme.fg("accent", theme.bold("🥩 pi-meat"))}  ${reading}  ${original}  ${theme.fg("muted", layout)}`,
@@ -364,7 +383,9 @@ export class MeatDiffViewer {
 			fit(this.options.theme.fg("muted", text), width);
 		return [
 			muted("j/k ↑/↓ vertical · h/l ←/→ horizontal · n/p previous/next file"),
-			muted("PgUp/PgDn page · Home/End · Tab reading/original · s layout"),
+			muted(
+				"PgUp/PgDn page · Home/End · Tab reading/original · Enter start on demand · s layout",
+			),
 			muted(
 				"Space fold file · c comment on line · r review with Pi · ? help · q/Esc close",
 			),
@@ -432,6 +453,14 @@ export class MeatDiffViewer {
 		layout: LayoutMode,
 	): string[] {
 		if (this.mode === "reading" && !this.reading) {
+			if (!this.readingStarted)
+				return [
+					this.options.theme.fg("accent", "Start Meat?"),
+					this.options.theme.fg(
+						"muted",
+						"Press Enter to build the reading diff",
+					),
+				];
 			return this.readingError
 				? [
 						this.options.theme.fg("error", "Reading diff failed"),
@@ -822,7 +851,8 @@ export class MeatDiffViewer {
 
 	private handleHeaderClick(column: number): void {
 		const brandWidth = visibleWidth("🥩 pi-meat  ");
-		const readingEnd = brandWidth + visibleWidth("READING");
+		const readingEnd =
+			brandWidth + visibleWidth(this.reading ? "READING ✨" : "READING");
 		const originalStart = readingEnd + 2;
 		const originalEnd = originalStart + visibleWidth("ORIGINAL");
 		const layoutStart = originalEnd + 2;

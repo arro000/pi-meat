@@ -17,12 +17,12 @@ Pi extension → pi-ai → configured provider
 
 ## Runtime flow
 
-1. The extension resolves the selected Git diff, configured Pi model, and model-supported Meat thinking level.
-2. The viewer opens immediately on the original diff. Its reading view shows Meat progress while abridgement runs.
+1. The extension resolves the selected Git diff, configured Pi model, model-supported Meat thinking level, and startup mode.
+2. The viewer opens immediately on the original diff and keeps Meat's state visible below the Reading/Original choices. In `default` mode abridgement starts immediately; in `on-demand` mode it starts only after the user opens Reading and presses `Enter`. A cached reading diff requires no new run.
 3. The local Go helper runs Meat's original `Abridge` engine without provider credentials.
 4. For each `meat.Model.Generate` call, the helper sends provider-neutral messages and tools over the versioned JSONL pipe.
 5. The extension performs the request through `pi-ai` in the Pi process, then returns the assistant response to Meat. Full provider response state stays in that model conversation.
-6. Meat handles validation, chunking, folds, and elisions. The extension stores the original and reading diffs, then updates the open viewer in place.
+6. Meat handles validation, chunking, folds, and elisions. The extension stores the original and reading diffs, updates the open viewer in place, and marks Reading with `✨`.
 7. The viewer marks commented files and lines, and opens an overlaid dialog to inspect or edit the selected comment. Each comment is anchored to file, old/new side, line, and code snippet. On review, the extension appends them to Pi's user message; the original diff remains immutable.
 
 Repository read and grep tools are disabled. The model receives the selected Git diff and abridgement conversation, not unrelated repository files.

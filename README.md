@@ -61,9 +61,9 @@ Pi packages run with your full user permissions. Review the source and [security
 
 1. Start Pi inside a Git repository.
 2. Authenticate and select a model in Pi as usual.
-3. Run `/meat-settings` to set Meat's persistent model and thinking level.
+3. Run `/meat-settings` to set Meat's persistent model, thinking level, and startup mode.
 4. Run `/meat` and choose what to examine and what to do. The original diff opens immediately.
-5. Press `Tab` to view Meat's progress and the reading diff when it is ready.
+5. In `default` startup mode, Meat starts immediately. In `on-demand` mode, press `Tab` to open Reading and `Enter` to start Meat.
 6. Click a code line (or press `c`), type the comment in the overlaid dialog, and press `Enter`; click a marked line to read or edit its comment, then press `r` to send comments with the review request to Pi.
 
 ## Choose changes
@@ -104,7 +104,8 @@ pi-meat accepts one revision, range, or named selector per run. It must run insi
 | `n` / `p` | Next / previous changed file |
 | `s` | Toggle side-by-side / unified layout |
 | `Space` | Fold / unfold the current file |
-| `Tab` | Toggle reading / original diff; pending reading view shows Meat chunk and turn progress |
+| `Tab` | Toggle reading / original diff; the status line below the modes remains visible throughout generation |
+| `Enter` | Start Meat from the Reading view when startup mode is `on-demand` |
 | `c` | Add or edit the selected line's comment (`Enter` saves, empty input deletes, `Esc` cancels) |
 | `r` | Close the viewer and ask Pi for a verified review, including comments |
 | `?` | Toggle help |
@@ -116,7 +117,14 @@ Wide terminals show a file sidebar and old/new panes. Commented files show a `ðŸ
 
 ## Model settings
 
-By default, Meat uses Pi's active model and thinking level. `/meat-settings`, `/meat settings`, or `Ctrl+Shift+M` configures an independent persistent model and model-supported thinking level without changing Pi's active settings.
+By default, Meat uses Pi's active model and thinking level. `/meat-settings`, `/meat settings`, or `Ctrl+Shift+M` configures an independent persistent model, model-supported thinking level, and startup mode without changing Pi's active settings.
+
+Startup mode is `default` unless changed:
+
+- `default`: Meat starts when the diff viewer opens.
+- `on-demand`: the original diff opens without starting Meat; switch to Reading and press `Enter` when you want to generate it.
+
+The viewer always shows Meat's state directly below the Reading/Original choices. When the reading diff is ready, `âœ¨` appears beside Reading. Cached reading diffs are ready immediately and do not require another run.
 
 Settings are stored in `~/.pi/agent/pi-meat.json`. Cache entries are separated by model and effective thinking level. Set `PI_MEAT_SETTINGS` to use another path.
 

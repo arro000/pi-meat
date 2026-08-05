@@ -22,9 +22,12 @@ import {
 } from "@earendil-works/pi-tui";
 import { sanitizeTerminalText } from "./terminal.ts";
 
+type MeatStartupMode = "default" | "on-demand";
+
 export interface MeatSettings {
 	defaultModel?: string;
 	thinkingLevel?: ModelThinkingLevel;
+	startupMode?: MeatStartupMode;
 }
 
 const THINKING_LEVELS: ModelThinkingLevel[] = [
@@ -76,9 +79,18 @@ export async function loadMeatSettings(): Promise<MeatSettings> {
 		throw new Error(
 			"Invalid pi-meat settings: thinkingLevel must be a supported level",
 		);
+	if (
+		value.startupMode !== undefined &&
+		value.startupMode !== "default" &&
+		value.startupMode !== "on-demand"
+	)
+		throw new Error(
+			"Invalid pi-meat settings: startupMode must be default or on-demand",
+		);
 	return {
 		...(value.defaultModel ? { defaultModel: value.defaultModel } : {}),
 		...(value.thinkingLevel ? { thinkingLevel: value.thinkingLevel } : {}),
+		...(value.startupMode ? { startupMode: value.startupMode } : {}),
 	};
 }
 
@@ -225,18 +237,44 @@ export async function openMeatSettings(ctx: ExtensionContext): Promise<void> {
 					return picker;
 				},
 			},
+			{
+				id: "startupMode",
+				label: "Meat startup",
+				currentValue: settings.startupMode ?? "default",
+				description: "Start automatically or only from the reading view.",
+				submenu: (value, selectDone) => {
+					const startupItems: SelectItem[] = [
+						{ value: "default", label: "default" },
+						{ value: "on-demand", label: "on-demand" },
+					];
+					const picker = new SelectList(
+						startupItems,
+						startupItems.length,
+						getSelectListTheme(),
+					);
+					picker.setSelectedIndex(value === "on-demand" ? 1 : 0);
+					picker.onSelect = (item) => selectDone(item.value);
+					picker.onCancel = () => selectDone();
+					return picker;
+				},
+			},
 		];
 		const list = new SettingsList(
 			items,
-			5,
+			7,
 			getSettingsListTheme(),
 			(id, value) => {
 				if (id === "defaultModel") {
 					settings.defaultModel = value;
 					current = value;
-				} else settings.thinkingLevel = value as ModelThinkingLevel;
+				} else if (id === "thinkingLevel")
+					settings.thinkingLevel = value as ModelThinkingLevel;
+				else settings.startupMode = value as MeatStartupMode;
 				const snapshot = { ...settings };
-				const status = `${id === "defaultModel" ? "model" : "thinking"}: ${value}`;
+				let name = "startup";
+				if (id === "defaultModel") name = "model";
+				else if (id === "thinkingLevel") name = "thinking";
+				const status = `${name}: ${value}`;
 				pendingSave = pendingSave
 					.then(() => saveMeatSettings(snapshot))
 					.then(

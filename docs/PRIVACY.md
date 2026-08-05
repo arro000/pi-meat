@@ -22,7 +22,7 @@ Default cache: `~/.pi/agent/cache/pi-meat/`
 
 Default settings: `~/.pi/agent/pi-meat.json`
 
-- selected default model label and Meat thinking level;
+- selected default model label, Meat thinking level, and startup mode;
 - no API key or provider credential.
 
 Cache is plaintext. On each run, pi-meat recursively tightens current and legacy cache trees to `0700` directories and `0600` files on POSIX systems. Disk encryption, backups, administrator access, malware, and custom cache locations remain outside pi-meat control.
