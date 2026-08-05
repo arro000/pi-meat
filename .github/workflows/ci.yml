@@ -2,6 +2,7 @@ name: CI
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 permissions:
@@ -14,6 +15,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -27,5 +29,8 @@ jobs:
           go-version: "1.24.13"
           cache: false
       - run: npm ci
-      - run: npm run release:check
+      - if: runner.os == 'Linux'
+        run: npm run release:check
+      - if: runner.os == 'Windows'
+        run: npm test && npm run check
       - run: npm run build:bridge

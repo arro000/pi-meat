@@ -18,6 +18,7 @@ All notable changes to pi-meat are documented here. Format follows [Keep a Chang
 ### Changed
 
 - Updated pinned GitHub Actions.
+- Avoided duplicate branch and pull-request CI runs and limited package-release checks to Linux.
 - Switched npm releases from a static token to OIDC trusted publishing.
 
 ### Security
