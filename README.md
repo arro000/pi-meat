@@ -2,9 +2,9 @@
 
 # 🥩 pi-meat
 
-### Read the change. Skip the gristle
+### Read the change. Skip the gristle.
 
-Navigable reading diffs for [Pi](https://pi.dev), powered by [Meat](https://meat.dev) and model subscription already used in Pi.
+Navigable reading diffs for [Pi](https://pi.dev), powered by [Meat](https://meat.dev) and your existing Pi model.
 
 [![CI](https://github.com/arro000/pi-meat/actions/workflows/ci.yml/badge.svg)](https://github.com/arro000/pi-meat/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/%40andreaarrighi%2Fpi-meat)](https://www.npmjs.com/package/@andreaarrighi/pi-meat)
@@ -14,149 +14,133 @@ Navigable reading diffs for [Pi](https://pi.dev), powered by [Meat](https://meat
 
 </div>
 
-## Why pi-meat?
+pi-meat turns a Git diff into a smaller reading diff, then opens both versions in a navigable terminal viewer. It uses the model already authenticated in Pi: no second provider account or API key is required.
 
-Agent-written changes can be large even when core idea is small. Meat reduces unified diff to lines needed to understand behavior, data flow, and architecture. pi-meat keeps original diff one key away and adds:
+- Move directly between changed files.
+- Switch between reading and original diffs at any time.
+- Use unified or synchronized side-by-side panes.
+- Hand the result back to Pi for a verification-oriented review.
 
-- active Pi model/subscription—no second API key;
-- syntax-aware keyboard and mouse diff viewer;
-- reading/original toggle and synchronized side-by-side panes;
-- private local artifacts for inspection;
-- one-key handoff to verification-oriented Pi review.
-
-> Meat abridges diffs; it does not prove correctness. Review handoff asks Pi to verify findings against original diff and repository source.
-
-## Status
-
-`0.1.x` is early public release. Commands, cache layout, and bridge protocol may evolve before `1.0.0`. See [changelog](CHANGELOG.md) and [roadmap](PLAN.md).
+> A reading diff reduces noise; it does not prove correctness. Verify findings against the original diff and repository source.
 
 ## Requirements
 
-- Pi
+- [Pi](https://pi.dev) interactive TUI
 - Node.js 24+
 - Go 1.24.13+
 - Git
 
-Current npm package ships bridge source and falls back to `go run`; prebuilt helper binaries are planned.
+Go is currently required because the package ships the bridge source and falls back to `go run`. Prebuilt bridge binaries are planned.
 
 ## Install
 
-From npm (recommended after `0.1.0` publication):
+Install the latest npm release:
 
 ```bash
 pi install npm:@andreaarrighi/pi-meat
 ```
 
-Pin exact release:
-
-```bash
-pi install npm:@andreaarrighi/pi-meat@0.1.0
-```
-
-Install tagged Git source:
-
-```bash
-pi install git:github.com/arro000/pi-meat@v0.1.0
-```
-
-Try without persistent install:
+Try it without a persistent install:
 
 ```bash
 pi -e npm:@andreaarrighi/pi-meat
 ```
 
-Packages execute with full user permissions. Review source and [security policy](SECURITY.md) before installation.
+Pin a release or install tagged Git source:
 
-## Usage
-
-Authenticate and select desired model in Pi. Meat uses active Pi model by default. Set persistent Meat model with `/meat-settings` or `Ctrl+Shift+M`; `/meat settings` remains alias. Settings live in `~/.pi/agent/pi-meat.json` (override with `PI_MEAT_SETTINGS`).
-
-```text
-/meat                         latest commit
-/meat staged                  staged changes
-/meat worktree                unstaged changes
-/meat all                     staged + unstaged changes
-/meat main...HEAD             branch diff
-/meat <revision>              specific commit
-/meat HEAD --fresh            bypass current cache entry
+```bash
+pi install npm:@andreaarrighi/pi-meat@0.1.0
+pi install git:github.com/arro000/pi-meat@v0.1.0
 ```
 
-### Viewer keys
+Pi packages run with your full user permissions. Review the source and [security policy](SECURITY.md) before installation.
+
+## Quick start
+
+1. Start Pi inside a Git repository.
+2. Authenticate and select a model in Pi as usual.
+3. Run `/meat` to read the latest commit.
+4. Press `Tab` whenever you need the complete original diff.
+
+Open `/meat-settings` if you want Meat to use a persistent model instead of Pi's active model.
+
+## Choose changes
+
+| Command | Changes opened |
+| --- | --- |
+| `/meat` | Latest commit (`HEAD`) |
+| `/meat <revision>` | Specific commit |
+| `/meat main...HEAD` | Revision or branch range |
+| `/meat staged` | Staged changes |
+| `/meat worktree` | Unstaged changes |
+| `/meat w` | Short alias for `worktree` |
+| `/meat all` | Staged and unstaged changes |
+| `/meat HEAD --fresh` | Ignore the matching cached result and create a new one |
+
+pi-meat accepts one revision, range, or named selector per run. It must run inside a Git repository and currently requires Pi's interactive TUI.
+
+## Viewer controls
 
 | Key | Action |
 | --- | --- |
 | `j` / `k`, `↑` / `↓` | Scroll vertically |
 | `h` / `l`, `←` / `→` | Scroll source horizontally |
-| Horizontal wheel / `Shift` + wheel | Scroll source horizontally with supported terminals/mice |
-| `PgUp` / `PgDn`, `Home` / `End` | Page or jump through current file |
+| `PgUp` / `PgDn`, `Home` / `End` | Page or jump through the current file |
 | `n` / `p` | Next / previous changed file |
 | `s` | Toggle side-by-side / unified layout |
-| Mouse click / wheel | Select sidebar file / scroll current diff |
-| `Space` | Fold / unfold current file |
+| `Space` | Fold / unfold the current file |
 | `Tab` | Toggle reading / original diff |
-| `r` | Close viewer and ask Pi for verified review |
+| `r` | Close the viewer and ask Pi for a verified review |
 | `?` | Toggle help |
 | `q` / `Esc` | Close |
+| Mouse click / wheel | Select a sidebar file / scroll the diff |
+| Horizontal wheel / `Shift` + wheel | Scroll horizontally when supported by the terminal |
 
-Wide terminals show file sidebar and old/new panes. Medium terminals keep full-width side-by-side panes. Narrow terminals switch to unified layout. Hold `Shift` for terminal-native selection when mouse reporting is active.
+Wide terminals show a file sidebar and old/new panes. Medium terminals keep full-width side-by-side panes; narrow terminals switch to unified layout. Hold `Shift` for terminal-native text selection while mouse reporting is active.
 
-## How subscription reuse works
+## Model settings
 
-Go helper runs original Meat `Abridge` engine without provider credentials. At each `meat.Model.Generate`, it sends provider-neutral messages/tools over local versioned JSONL pipe. Extension performs model request in Pi process through `pi-ai`, then returns assistant response to Meat.
+By default, Meat uses Pi's active model. `/meat-settings`, `/meat settings`, or `Ctrl+Shift+M` opens the persistent model picker without changing Pi's active model.
 
-```text
-meat.Abridge → local JSONL helper → pi-ai → configured Pi provider
-```
+Settings are stored in `~/.pi/agent/pi-meat.json`. Set `PI_MEAT_SETTINGS` to use another path.
 
-Repository read/grep tools are disabled. Model receives selected Git diff and abridgement conversation, not unrelated repository files. Full provider response state remains in model conversation while Meat handles validation, chunking, folds, and elisions.
+## Local data and privacy
 
-See [architecture](docs/ARCHITECTURE.md) and [privacy/data flow](docs/PRIVACY.md).
+The selected diff is sent to the model provider configured in Pi. pi-meat does not enable repository read or grep tools for abridgement, and it adds no independent telemetry.
 
-## Privacy and local artifacts
-
-- Provider credentials are not intentionally passed to helper; they are excluded from helper environment, JSONL, and cache.
-- Helper is trusted, unsandboxed code running with same OS user permissions.
-- Selected diff is sent to configured model provider.
-- Cache defaults to `~/.pi/agent/cache/pi-meat/`.
-- POSIX cache directories/files use owner-only permissions (`0700` / `0600`).
-- Cache is plaintext and has no automatic expiry yet.
-- Override cache root with `PI_MEAT_CACHE`.
-- Override helper only with trusted executable via `PI_MEAT_BRIDGE=/path/to/pi-meat-bridge`.
-
-Delete default cache:
+Original and reading diffs are cached as plaintext under `~/.pi/agent/cache/pi-meat/` with no automatic expiry. Delete the default cache with:
 
 ```bash
 rm -rf ~/.pi/agent/cache/pi-meat
 ```
 
-## Development
+Set `PI_MEAT_CACHE` to choose another cache directory. See [privacy and data flow](docs/PRIVACY.md) for stored fields, permissions, credentials, retention, and provider boundaries.
 
-```bash
-git clone https://github.com/arro000/pi-meat.git
-cd pi-meat
-npm ci
-npm run release:check
-pi -e .
-```
+## Troubleshooting
 
-Build helper for faster startup:
+| Problem | Action |
+| --- | --- |
+| `pi-meat currently requires Pi's interactive TUI` | Start a regular interactive Pi session. |
+| `pi-meat must run inside a Git repository` | Start Pi from the repository or one of its subdirectories. |
+| `No changes found` | Check the selected revision or use `staged`, `worktree`, or `all`. |
+| Configured model is unavailable | Run `/meat-settings` and select an authenticated model. |
+| Bridge startup or Go module error | Confirm Go 1.24.13+ is installed and can download the pinned modules. The first run may be slower. |
+| Stale reading diff | Run the same selector with `--fresh`. |
 
-```bash
-npm run build:bridge
-```
+For unresolved problems, follow the [support guide](SUPPORT.md).
 
-Contributions: [CONTRIBUTING.md](CONTRIBUTING.md) · Support: [SUPPORT.md](SUPPORT.md) · Security: [SECURITY.md](SECURITY.md) · Releases: [docs/RELEASING.md](docs/RELEASING.md)
+## Status
 
-## Publishing and Pi catalog
+`0.1.x` is an early public release. Commands, cache layout, and bridge protocol may change before `1.0.0`.
 
-Package publishes as [`@andreaarrighi/pi-meat`](https://www.npmjs.com/package/@andreaarrighi/pi-meat) with npm provenance. Pi catalog automatically discovers public npm packages tagged `pi-package`; no manual submission is documented. Catalog indexing has no published SLA.
+## Reference
 
-After release, verify [package page](https://pi.dev/packages/@andreaarrighi/pi-meat). Full maintainer procedure: [docs/RELEASING.md](docs/RELEASING.md).
+- [Architecture](docs/ARCHITECTURE.md): components, model bridge, protocol, and trust boundaries.
+- [Privacy](docs/PRIVACY.md): provider data, local artifacts, credentials, and deletion.
+- [Contributing](CONTRIBUTING.md): development setup, tests, and pull requests.
+- [Releasing](docs/RELEASING.md): maintainer publishing and Pi catalog procedure.
+- [Changelog](CHANGELOG.md) and [roadmap](PLAN.md): current status and planned work.
 
-## Naming and attribution
-
-pi-meat is independent integration. It is not affiliated with or endorsed by Pi maintainers or Bold Software, Inc. Meat is licensed under Apache-2.0; see [NOTICE](NOTICE). Brand usage: [docs/BRAND.md](docs/BRAND.md).
-
-## License
+pi-meat is an independent integration. It is not affiliated with or endorsed by Pi maintainers or Bold Software, Inc. Meat attribution is provided in [NOTICE](NOTICE); naming and visual guidance live in the [brand guide](docs/BRAND.md).
 
 [Apache-2.0](LICENSE) © 2026 arro000

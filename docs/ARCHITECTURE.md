@@ -1,6 +1,6 @@
 # Architecture
 
-pi-meat turns Meat's diff abridgement engine into Pi-native reading workflow.
+pi-meat turns Meat's diff abridgement engine into a Pi-native reading workflow.
 
 ```text
 Git selector
@@ -14,6 +14,16 @@ Meat helper (Go)
     ▼
 Pi extension → pi-ai → configured provider
 ```
+
+## Runtime flow
+
+1. The extension resolves the selected Git diff and the active or configured Pi model.
+2. The local Go helper runs Meat's original `Abridge` engine without provider credentials.
+3. For each `meat.Model.Generate` call, the helper sends provider-neutral messages and tools over the versioned JSONL pipe.
+4. The extension performs the request through `pi-ai` in the Pi process, then returns the assistant response to Meat. Full provider response state stays in that model conversation.
+5. Meat handles validation, chunking, folds, and elisions. The extension stores the original and reading diffs and opens the viewer.
+
+Repository read and grep tools are disabled. The model receives the selected Git diff and abridgement conversation, not unrelated repository files.
 
 ## Components
 

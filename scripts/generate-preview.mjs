@@ -80,6 +80,14 @@ function text(value, x, y, scale, color) {
 	}
 }
 
+function textWidth(value, scale) {
+	return value.length === 0 ? 0 : (value.length * 6 - 1) * scale;
+}
+
+function rightAlignedText(value, right, y, scale, color) {
+	text(value, right - textWidth(value, scale) + 1, y, scale, color);
+}
+
 function crc32(buffer) {
 	let crc = 0xffffffff;
 	for (const byte of buffer) {
@@ -108,8 +116,8 @@ rect(116, 334, 350, 54, colors.red);
 rect(116, 406, 500, 54, colors.green);
 text("- NOISE", 140, 345, 4, colors.text);
 text("+ SIGNAL", 140, 417, 4, colors.text);
-text("NAVIGABLE READING DIFFS FOR PI", 600, 354, 3, colors.text);
-text("POWERED BY MEAT", 600, 418, 3, colors.muted);
+rightAlignedText("NAVIGABLE READING DIFFS FOR PI", 1136, 354, 3, colors.text);
+rightAlignedText("POWERED BY MEAT", 1136, 418, 3, colors.muted);
 
 const raw = Buffer.alloc((width * 4 + 1) * height);
 for (let row = 0; row < height; row++) {
