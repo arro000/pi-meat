@@ -328,12 +328,15 @@ setInterval(() => {}, 1_000);
 	}
 });
 
-test("turns closed bridge stdin into controlled rejection", async () => {
-	const directory = await mkdtemp(join(tmpdir(), "pi-meat-bridge-closed-"));
-	const executable = join(directory, "fake-bridge.cjs");
-	await writeFile(
-		executable,
-		`#!/usr/bin/env node
+test(
+	"turns closed bridge stdin into controlled rejection",
+	{ skip: process.platform === "win32" },
+	async () => {
+		const directory = await mkdtemp(join(tmpdir(), "pi-meat-bridge-closed-"));
+		const executable = join(directory, "fake-bridge.cjs");
+		await writeFile(
+			executable,
+			`#!/usr/bin/env node
 const fs = require("node:fs");
 process.stdin.on("error", () => {});
 process.stdin.once("data", () => {
@@ -343,24 +346,25 @@ process.stdin.once("data", () => {
 });
 setInterval(() => {}, 1_000);
 `,
-	);
-	await chmod(executable, 0o755);
-	const previousBridge = process.env.PI_MEAT_BRIDGE;
-	process.env.PI_MEAT_BRIDGE = executable;
-	try {
-		await assert.rejects(
-			runBridge({
-				diff: "diff",
-				onGenerate: async () => assistant,
-			}),
-			/EPIPE|stdin is closed|bridge exited/,
 		);
-	} finally {
-		if (previousBridge === undefined) delete process.env.PI_MEAT_BRIDGE;
-		else process.env.PI_MEAT_BRIDGE = previousBridge;
-		await rm(directory, { recursive: true, force: true });
-	}
-});
+		await chmod(executable, 0o755);
+		const previousBridge = process.env.PI_MEAT_BRIDGE;
+		process.env.PI_MEAT_BRIDGE = executable;
+		try {
+			await assert.rejects(
+				runBridge({
+					diff: "diff",
+					onGenerate: async () => assistant,
+				}),
+				/EPIPE|stdin is closed|bridge exited/,
+			);
+		} finally {
+			if (previousBridge === undefined) delete process.env.PI_MEAT_BRIDGE;
+			else process.env.PI_MEAT_BRIDGE = previousBridge;
+			await rm(directory, { recursive: true, force: true });
+		}
+	},
+);
 
 test("forces bridge shutdown when child ignores SIGTERM", async () => {
 	const directory = await mkdtemp(join(tmpdir(), "pi-meat-bridge-stubborn-"));

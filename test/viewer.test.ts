@@ -3,7 +3,11 @@ import test from "node:test";
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { buildSplitRows } from "../extensions/pi-meat/diff-layout.ts";
-import { MeatDiffViewer } from "../extensions/pi-meat/viewer.ts";
+import {
+	CommentDialog,
+	MeatDiffViewer,
+	type CommentAnchor,
+} from "../extensions/pi-meat/viewer.ts";
 import { parseUnifiedDiff } from "../internal/diff.ts";
 
 const diff = `diff --git a/src/a.ts b/src/a.ts
@@ -105,6 +109,35 @@ test("adds subtle backgrounds to added and removed lines", () => {
 	assert.ok(backgrounds.includes("toolSuccessBg"));
 });
 
+test("highlights the code line under the mouse", () => {
+	const hoverTheme = {
+		...theme,
+		bg: (color: string, text: string) =>
+			color === "selectedBg" ? `[hover]${text}` : text,
+	} as unknown as Theme;
+	const viewer = new MeatDiffViewer({
+		theme: hoverTheme,
+		summary: "Hover",
+		originalDiff: diff,
+		readingDiff: diff,
+		modelLabel: "provider/model",
+		viewportHeight: () => 10,
+		done: () => {},
+	});
+
+	viewer.render(98);
+	viewer.handleInput("\x1b[<35;10;6M");
+	const hovered = viewer.render(98);
+	assert.ok(
+		hovered.some((line) => line.includes("[hover]") && line.includes("keep")),
+	);
+	assert.ok(
+		hovered.every(
+			(line) => !line.includes("[hover]") || !line.includes("old one"),
+		),
+	);
+});
+
 test("toggles side-by-side and unified layout with s", () => {
 	const viewer = new MeatDiffViewer({
 		theme,
@@ -163,6 +196,7 @@ test("scrolls long source lines horizontally with synchronized split panes", () 
 
 	const initial = viewer.render(98);
 	assert.ok(initial.some((line) => line.includes("h/l ←/→ horizontal")));
+	assert.ok(initial.some((line) => line.includes("? help")));
 	assert.ok(initial.every((line) => !line.includes("OLD_END")));
 	assert.ok(initial.every((line) => !line.includes("NEW_END")));
 
@@ -177,8 +211,12 @@ test("scrolls long source lines horizontally with synchronized split panes", () 
 	assert.ok(scrolled.every((line) => visibleWidth(line) <= 98));
 });
 
-test("adds comments by clicking a diff line and exposes anchors", async () => {
-	const comments: string[] = [];
+test("anchors clicks to the visible split line and edits comments in a dialog", async () => {
+	const requests: Array<{
+		anchor: CommentAnchor;
+		currentText: string | undefined;
+	}> = [];
+	const responses = ["Needs better handling", "Handle the error", ""];
 	const viewer = new MeatDiffViewer({
 		theme,
 		summary: "Comments",
@@ -187,35 +225,54 @@ test("adds comments by clicking a diff line and exposes anchors", async () => {
 		modelLabel: "provider/model",
 		viewportHeight: () => 10,
 		done: () => {},
-		requestComment: async (anchor) => {
-			comments.push(
-				`${anchor.filePath}:${anchor.line}:${anchor.side}:${anchor.snippet}`,
-			);
-			return "Needs better handling";
+		requestComment: async (anchor, currentText) => {
+			requests.push({ anchor, currentText });
+			return responses.shift();
 		},
 	});
 	viewer.render(98);
-	viewer.handleInput("\x1b[<0;10;5M");
-	await Promise.resolve();
-	assert.deepEqual(comments, ["src/a.ts:10:old:keep"]);
-	assert.deepEqual(
+	viewer.handleInput("\x1b[<0;10;6M");
+	await new Promise((resolve) => setImmediate(resolve));
+	assert.equal(requests[0]?.anchor.line, 10);
+	assert.equal(requests[0]?.anchor.snippet, "keep");
+	assert.equal(requests[0]?.currentText, undefined);
+	assert.equal(viewer.getComments()[0]?.text, "Needs better handling");
+	assert.ok(
 		viewer
-			.getComments()
-			.map(({ text, filePath, line, side }) => ({
-				text,
-				filePath,
-				line,
-				side,
-			})),
-		[
-			{
-				text: "Needs better handling",
-				filePath: "src/a.ts",
-				line: 10,
-				side: "old",
-			},
-		],
+			.render(120)
+			.some((line) => line.includes("src/a.ts") && line.includes("💬1")),
 	);
+	assert.ok(
+		viewer
+			.render(98)
+			.some((line) => line.includes("💬") && line.includes("keep")),
+	);
+
+	viewer.handleInput("\x1b[<0;10;6M");
+	await new Promise((resolve) => setImmediate(resolve));
+	assert.equal(requests[1]?.currentText, "Needs better handling");
+	assert.equal(viewer.getComments()[0]?.text, "Handle the error");
+
+	viewer.handleInput("\x1b[<0;10;6M");
+	await new Promise((resolve) => setImmediate(resolve));
+	assert.equal(viewer.getComments().length, 0);
+});
+
+test("comment dialog submits or cancels the overlaid input", () => {
+	const results: Array<string | undefined> = [];
+	const dialog = new CommentDialog({
+		theme,
+		anchor: { filePath: "src/a.ts", line: 10, side: "old", snippet: "keep" },
+		currentText: "Existing comment",
+		done: (text) => results.push(text),
+		requestRender: () => {},
+	});
+	dialog.focused = true;
+	assert.ok(dialog.render(60).some((line) => line.includes("Edit comment")));
+	dialog.handleInput("\x15");
+	dialog.handleInput("Updated comment");
+	dialog.handleInput("\r");
+	assert.deepEqual(results, ["Updated comment"]);
 });
 
 test("supports native and shifted horizontal mouse wheels", () => {
@@ -274,7 +331,7 @@ test("preserves final columns with five-digit split line numbers", () => {
 	for (let index = 0; index < 20; index++) viewer.handleInput("l");
 	const lines = viewer.render(98);
 	assert.ok(lines.some((line) => line.includes("Z") && line.includes("10000")));
-	assert.ok(lines.some((line) => line.includes("col 7-45/45")));
+	assert.ok(lines.some((line) => line.includes("col 9-45/45")));
 });
 
 test("reaches long-line tails in very narrow terminals", () => {
@@ -355,6 +412,20 @@ test("sanitizes control characters decoded from quoted Git paths", () => {
 	const c1Lines = c1Viewer.render(72);
 	assert.ok(c1Lines.some((line) => line.includes("evil�31m.ts")));
 	assert.ok(c1Lines.every((line) => !line.includes("\u009b")));
+
+	const bidiDiff = pathDiff.replaceAll("name.ts", "\u202ename.ts");
+	const bidiViewer = new MeatDiffViewer({
+		theme,
+		summary: "Bidi path controls",
+		originalDiff: bidiDiff,
+		readingDiff: bidiDiff,
+		modelLabel: "provider/model",
+		viewportHeight: () => 8,
+		done: () => {},
+	});
+	const bidiLines = bidiViewer.render(72);
+	assert.ok(bidiLines.some((line) => line.includes("evil��name.ts")));
+	assert.ok(bidiLines.every((line) => !line.includes("\u202e")));
 });
 
 test("reaches final unified line and sanitizes terminal controls", () => {

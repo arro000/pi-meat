@@ -23,7 +23,7 @@ import {
 	PROTOCOL_VERSION,
 } from "./protocol.ts";
 import { sanitizeTerminalText } from "./terminal.ts";
-import { MeatDiffViewer, type ViewerAction } from "./viewer.ts";
+import { CommentDialog, MeatDiffViewer, type ViewerAction } from "./viewer.ts";
 import {
 	loadMeatSettings,
 	openMeatSettings,
@@ -255,14 +255,28 @@ export default function piMeat(pi: ExtensionAPI) {
 							modelLabel,
 							viewportHeight: () => Math.max(8, tui.terminal.rows - 9),
 							done,
-							requestComment: async (anchor) => {
-								const text = await ctx.ui.input(
-									`Comment on ${anchor.filePath}:${anchor.line} (${anchor.side})`,
-									anchor.snippet,
-								);
-								tui.requestRender();
-								return text;
-							},
+							requestRender: () => tui.requestRender(),
+							requestComment: (anchor, currentText) =>
+								ctx.ui.custom<string | undefined>(
+									(dialogTui, dialogTheme, _dialogKeys, closeDialog) =>
+										new CommentDialog({
+											theme: dialogTheme,
+											anchor,
+											currentText,
+											done: closeDialog,
+											requestRender: () => dialogTui.requestRender(),
+										}),
+									{
+										overlay: true,
+										overlayOptions: {
+											anchor: "center",
+											width: "70%",
+											minWidth: 48,
+											maxHeight: 4,
+											margin: 1,
+										},
+									},
+								),
 						});
 						viewer = createdViewer;
 						const stopMouseReporting = startMouseReporting(tui.terminal);
@@ -337,11 +351,10 @@ function startMouseReporting(terminal: Terminal): () => void {
 	const stop = () => {
 		if (!active) return;
 		active = false;
-		terminal.write("\x1b[?1002l\x1b[?1006l");
+		terminal.write("\x1b[?1003l\x1b[?1006l");
 	};
-	// Button-event tracking reports wheel events, including horizontal wheels.
-	// 1000 is not enough in terminals that expose tilt wheels as button events.
-	terminal.write("\x1b[?1002h\x1b[?1006h");
+	// Any-event tracking reports hover and wheel events, including tilt wheels.
+	terminal.write("\x1b[?1003h\x1b[?1006h");
 	process.once("exit", stop);
 	return () => {
 		process.removeListener("exit", stop);

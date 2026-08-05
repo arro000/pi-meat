@@ -39,24 +39,17 @@ npm run release:check
 
 `release:check` builds exact tarball, installs it in temporary clean consumer, and verifies manifest plus required package files. Also inspect `npm pack --dry-run` output manually before first release.
 
-## 3. Bootstrap first npm publish
+## 3. Configure npm trusted publishing
 
-Trusted publisher settings are normally configured on existing npm package. For first publish:
-
-1. Create narrowly scoped granular npm token permitted to publish `@andreaarrighi/pi-meat` with required 2FA policy.
-2. Add it temporarily as GitHub Actions secret `NPM_TOKEN`.
-3. Push protected version tag matching package version, e.g. `v0.1.0`.
-4. Release workflow publishes public package with provenance.
-
-Never commit token. After successful first publish, configure npm package **Settings → Trusted Publisher**:
+Configure npm package **Settings → Trusted Publisher**:
 
 - provider: GitHub Actions;
 - owner: `arro000`;
 - repository: `pi-meat`;
 - workflow: `release.yml`;
-- environment: configured release environment, if used.
+- environment: `npm`.
 
-Delete GitHub `NPM_TOKEN`, revoke token, and use OIDC trusted publishing for future releases.
+The release workflow uses GitHub OIDC and does not require an `NPM_TOKEN` secret.
 
 ## 4. Tag and publish
 

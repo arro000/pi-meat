@@ -165,7 +165,10 @@ func main() {
 		return
 	}
 
-	_ = model.send(event{Type: "ready", ProtocolVersion: protocolVersion})
+	if err := model.send(event{Type: "ready", ProtocolVersion: protocolVersion}); err != nil {
+		fmt.Fprintln(os.Stderr, "write ready event:", err)
+		return
+	}
 	// Do not expose repository tools to model-driven abridgement. Selected diff is
 	// sufficient input; disabling RepoRoot prevents reads of unrelated, ignored,
 	// metadata, or symlinked files from repository checkout.
@@ -174,19 +177,25 @@ func main() {
 		UnifiedDiff: start.Diff,
 		MaxTurns:    start.MaxTurns,
 		Progress: func(message string) {
-			_ = model.send(event{Type: "progress", Message: message})
+			if err := model.send(event{Type: "progress", Message: message}); err != nil {
+				fmt.Fprintln(os.Stderr, "write progress event:", err)
+			}
 		},
 	})
 	if err != nil {
 		fatal(encoder, err.Error())
 		return
 	}
-	_ = model.send(event{
+	if err := model.send(event{
 		Type: "result", Summary: result.Summary, SmartDiff: result.SmartDiff,
 		InputTokens: result.InputTokens, OutputTokens: result.OutputTokens,
-	})
+	}); err != nil {
+		fmt.Fprintln(os.Stderr, "write result event:", err)
+	}
 }
 
 func fatal(encoder *json.Encoder, message string) {
-	_ = encoder.Encode(event{Type: "error", Message: message})
+	if err := encoder.Encode(event{Type: "error", Message: message}); err != nil {
+		fmt.Fprintln(os.Stderr, "write error event:", err)
+	}
 }
