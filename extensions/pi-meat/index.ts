@@ -244,9 +244,10 @@ export default function piMeat(pi: ExtensionAPI) {
 
 				const finalResult = result;
 				if (!finalResult) return;
+				let viewer: MeatDiffViewer | undefined;
 				const action = await ctx.ui.custom<ViewerAction>(
 					(tui, theme, _keybindings, done) => {
-						const viewer = new MeatDiffViewer({
+						const createdViewer = new MeatDiffViewer({
 							theme,
 							summary: finalResult.summary,
 							originalDiff: diff,
@@ -254,18 +255,27 @@ export default function piMeat(pi: ExtensionAPI) {
 							modelLabel,
 							viewportHeight: () => Math.max(8, tui.terminal.rows - 9),
 							done,
+							requestComment: async (anchor) => {
+								const text = await ctx.ui.input(
+									`Comment on ${anchor.filePath}:${anchor.line} (${anchor.side})`,
+									anchor.snippet,
+								);
+								tui.requestRender();
+								return text;
+							},
 						});
+						viewer = createdViewer;
 						const stopMouseReporting = startMouseReporting(tui.terminal);
 						return {
-							render: (width) => viewer.render(width),
+							render: (width) => createdViewer.render(width),
 							handleInput: (data) => {
-								viewer.handleInput(data);
+								createdViewer.handleInput(data);
 								tui.requestRender();
 							},
-							invalidate: () => viewer.invalidate(),
+							invalidate: () => createdViewer.invalidate(),
 							dispose: () => {
 								stopMouseReporting();
-								viewer.dispose();
+								createdViewer.dispose();
 							},
 						};
 					},
@@ -282,8 +292,17 @@ export default function piMeat(pi: ExtensionAPI) {
 				);
 
 				if (selectedAction === "review" || action === "review") {
+					const comments = viewer?.getComments() ?? [];
+					const commentContext = comments.length
+						? `\n\nUser comments to address:\n${comments
+								.map(
+									(comment, index) =>
+										`${index + 1}. ${comment.filePath}:${comment.line} (${comment.side})\n   Code: ${comment.snippet}\n   Comment: ${comment.text}`,
+								)
+								.join("\n")}`
+						: "";
 					pi.sendUserMessage(
-						`Review the ${source} changes. Meat's reading diff is at ${paths.reading}; the immutable original diff is at ${paths.original}. Start from the reading diff for intent, but verify every finding against the original diff and repository source. Focus on correctness, regressions, security, and architectural consequences rather than style.`,
+						`Review the ${source} changes. Meat's reading diff is at ${paths.reading}; the immutable original diff is at ${paths.original}. Start from the reading diff for intent, but verify every finding against the original diff and repository source. Focus on correctness, regressions, security, and architectural consequences rather than style.${commentContext}`,
 					);
 				}
 			} catch (error) {

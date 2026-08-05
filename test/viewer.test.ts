@@ -177,6 +177,47 @@ test("scrolls long source lines horizontally with synchronized split panes", () 
 	assert.ok(scrolled.every((line) => visibleWidth(line) <= 98));
 });
 
+test("adds comments by clicking a diff line and exposes anchors", async () => {
+	const comments: string[] = [];
+	const viewer = new MeatDiffViewer({
+		theme,
+		summary: "Comments",
+		originalDiff: diff,
+		readingDiff: diff,
+		modelLabel: "provider/model",
+		viewportHeight: () => 10,
+		done: () => {},
+		requestComment: async (anchor) => {
+			comments.push(
+				`${anchor.filePath}:${anchor.line}:${anchor.side}:${anchor.snippet}`,
+			);
+			return "Needs better handling";
+		},
+	});
+	viewer.render(98);
+	viewer.handleInput("\x1b[<0;10;5M");
+	await Promise.resolve();
+	assert.deepEqual(comments, ["src/a.ts:10:old:keep"]);
+	assert.deepEqual(
+		viewer
+			.getComments()
+			.map(({ text, filePath, line, side }) => ({
+				text,
+				filePath,
+				line,
+				side,
+			})),
+		[
+			{
+				text: "Needs better handling",
+				filePath: "src/a.ts",
+				line: 10,
+				side: "old",
+			},
+		],
+	);
+});
+
 test("supports native and shifted horizontal mouse wheels", () => {
 	const source = `${"0123456789".repeat(12)}END`;
 	const longDiff = `diff --git a/src/wheel.ts b/src/wheel.ts\n--- a/src/wheel.ts\n+++ b/src/wheel.ts\n@@ -1 +1 @@\n-${source}\n+${source}\n`;

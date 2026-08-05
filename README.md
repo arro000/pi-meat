@@ -61,6 +61,7 @@ Pi packages run with your full user permissions. Review the source and [security
 2. Authenticate and select a model in Pi as usual.
 3. Run `/meat` and choose what to examine and what to do.
 4. Press `Tab` whenever you need the complete original diff.
+5. Click a code line (or press `c`) to add a comment; press `r` to send comments with review request to Pi.
 
 Open `/meat-settings` if you want Meat to use a persistent model instead of Pi's active model.
 
@@ -103,7 +104,8 @@ pi-meat accepts one revision, range, or named selector per run. It must run insi
 | `s` | Toggle side-by-side / unified layout |
 | `Space` | Fold / unfold the current file |
 | `Tab` | Toggle reading / original diff |
-| `r` | Close the viewer and ask Pi for a verified review |
+| `c` | Add comment on selected/clicked code line |
+| `r` | Close the viewer and ask Pi for a verified review, including comments |
 | `?` | Toggle help |
 | `q` / `Esc` | Close |
 | Mouse click / wheel | Select a sidebar file / scroll the diff |

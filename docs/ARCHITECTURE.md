@@ -22,6 +22,7 @@ Pi extension → pi-ai → configured provider
 3. For each `meat.Model.Generate` call, the helper sends provider-neutral messages and tools over the versioned JSONL pipe.
 4. The extension performs the request through `pi-ai` in the Pi process, then returns the assistant response to Meat. Full provider response state stays in that model conversation.
 5. Meat handles validation, chunking, folds, and elisions. The extension stores the original and reading diffs and opens the viewer.
+6. Viewer comments are anchored to file, old/new side, line, and code snippet. On review, extension appends them to Pi's user message; original diff remains immutable.
 
 Repository read and grep tools are disabled. The model receives the selected Git diff and abridgement conversation, not unrelated repository files.
 
@@ -30,7 +31,7 @@ Repository read and grep tools are disabled. The model receives the selected Git
 - `extensions/pi-meat/index.ts`: command lifecycle, Git selection, model resolution, cache, viewer and review handoff.
 - `extensions/pi-meat/bridge.ts`: helper process lifecycle, environment isolation, JSONL transport, cancellation and validation.
 - `extensions/pi-meat/protocol.ts`: versioned wire types and Pi/Meat message conversion.
-- `extensions/pi-meat/viewer.ts`: responsive syntax-aware TUI viewer.
+- `extensions/pi-meat/viewer.ts`: responsive syntax-aware TUI viewer and session-scoped line comments.
 - `internal/diff.ts`: terminal-safe unified diff parser.
 - `bridge/main.go`: narrow adapter around pinned `meat.dev` module.
 

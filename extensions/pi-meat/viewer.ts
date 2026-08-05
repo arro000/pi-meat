@@ -28,6 +28,22 @@ export type ViewerAction = "close" | "review";
 type ViewMode = "reading" | "original";
 type LayoutMode = "split" | "unified";
 
+export interface DiffComment {
+	id: string;
+	filePath: string;
+	side: "old" | "new";
+	line: number;
+	text: string;
+	snippet: string;
+}
+
+export interface CommentAnchor {
+	filePath: string;
+	side: "old" | "new";
+	line: number;
+	snippet: string;
+}
+
 export interface MeatDiffViewerOptions {
 	theme: Theme;
 	summary: string;
@@ -36,6 +52,7 @@ export interface MeatDiffViewerOptions {
 	modelLabel: string;
 	viewportHeight: () => number;
 	done: (action: ViewerAction) => void;
+	requestComment?: (anchor: CommentAnchor) => Promise<string | undefined>;
 }
 
 export class MeatDiffViewer {
@@ -52,6 +69,8 @@ export class MeatDiffViewer {
 	private lastContentWidth = 88;
 	private lastSidebarWidth = 0;
 	private lastBodyStartRow = 3;
+	private pendingComment = false;
+	private comments: DiffComment[] = [];
 	private readonly reading: ParsedDiff;
 	private readonly original: ParsedDiff;
 	private readonly options: MeatDiffViewerOptions;
@@ -71,6 +90,10 @@ export class MeatDiffViewer {
 		if (matchesKey(data, Key.escape) || data === "q")
 			return this.options.done("close");
 		if (data === "r") return this.options.done("review");
+		if (data === "c") {
+			this.requestCommentAt(this.selectedContentPosition());
+			return;
+		}
 		if (data === "?") {
 			this.help = !this.help;
 			return;
@@ -180,7 +203,7 @@ export class MeatDiffViewer {
 			fit(
 				theme.fg(
 					"dim",
-					"j/k ↑/↓ vertical · h/l ←/→ horizontal · n/p file · ? help",
+					`j/k ↑/↓ vertical · h/l ←/→ horizontal · c comment · r review${this.comments.length ? ` · ${this.comments.length} comment${this.comments.length === 1 ? "" : "s"}` : ""}`,
 				),
 				w,
 			),
@@ -282,7 +305,9 @@ export class MeatDiffViewer {
 		return [
 			muted("j/k ↑/↓ vertical · h/l ←/→ horizontal · n/p previous/next file"),
 			muted("PgUp/PgDn page · Home/End · Tab reading/original · s layout"),
-			muted("Space fold file · r review with Pi · ? help · q/Esc close"),
+			muted(
+				"Space fold file · c comment on line · r review with Pi · ? help · q/Esc close",
+			),
 		];
 	}
 
@@ -517,11 +542,123 @@ export class MeatDiffViewer {
 			this.handleHeaderClick(column);
 			return;
 		}
-		if (this.lastSidebarWidth === 0 || column >= this.lastSidebarWidth) return;
-		const fileRow = row - this.lastBodyStartRow - 2;
-		const fileIndex = this.sidebarScroll + fileRow;
-		if (fileRow < 0 || fileIndex >= this.active.files.length) return;
-		this.selectFileIndex(fileIndex);
+		if (this.lastSidebarWidth > 0 && column < this.lastSidebarWidth) {
+			const fileRow = row - this.lastBodyStartRow - 2;
+			const fileIndex = this.sidebarScroll + fileRow;
+			if (fileRow >= 0 && fileIndex < this.active.files.length)
+				this.selectFileIndex(fileIndex);
+			return;
+		}
+		if (this.lastSidebarWidth > 0) {
+			const contentColumn = column - this.lastSidebarWidth - 3;
+			if (contentColumn < 0) return;
+		}
+		const contentColumn =
+			this.lastSidebarWidth > 0 ? column - this.lastSidebarWidth - 3 : column;
+		const anchor = this.contentPositionAt(row, contentColumn);
+		if (anchor) this.requestCommentAt(anchor);
+	}
+
+	private contentPositionAt(
+		row: number,
+		column: number,
+	): CommentAnchor | undefined {
+		const contentRow = row - this.lastBodyStartRow;
+		if (contentRow < 0) return undefined;
+		if (this.lastLayout === "split") {
+			const rows = buildSplitRows(this.active, this.selectedFile).filter(
+				(item) => item.kind !== "meta" || showSplitMetadata(item),
+			);
+			const splitRow = rows[this.scroll + contentRow];
+			if (!splitRow || splitRow.kind !== "pair") return undefined;
+			const columnWidth = Math.max(
+				1,
+				Math.floor((this.lastContentWidth - 3) / 2),
+			);
+			const left = column < columnWidth;
+			const line = left ? splitRow.left : splitRow.right;
+			if (!line?.number) return undefined;
+			return this.makeAnchor(left ? "old" : "new", line.number, line.text);
+		}
+		const line = this.selectedLines[this.scroll + contentRow];
+		if (!line || !isUnifiedSourceLine(line)) return undefined;
+		const side = line.kind === "remove" ? "old" : "new";
+		const number = this.lineNumberForUnified(
+			this.selectedLines,
+			this.scroll + contentRow,
+			side,
+		);
+		return number === undefined
+			? undefined
+			: this.makeAnchor(side, number, stripDiffMarker(line.text));
+	}
+
+	private selectedContentPosition(): CommentAnchor | undefined {
+		return this.contentPositionAt(this.lastBodyStartRow, 0);
+	}
+
+	private lineNumberForUnified(
+		lines: DiffLine[],
+		index: number,
+		side: "old" | "new",
+	): number | undefined {
+		let oldLine: number | undefined;
+		let newLine: number | undefined;
+		for (let cursor = 0; cursor <= index; cursor++) {
+			const line = lines[cursor];
+			if (!line) continue;
+			if (line.kind === "hunk") {
+				const match = line.text.match(/^@@ -(\d+)/);
+				const newMatch = line.text.match(/^@@ -\d+(?:,\d+)? \+(\d+)/);
+				oldLine = match ? Number(match[1]) : oldLine;
+				newLine = newMatch ? Number(newMatch[1]) : newLine;
+				continue;
+			}
+			if (cursor === index) break;
+			if (line.kind === "remove" && oldLine !== undefined) oldLine++;
+			if (line.kind === "add" && newLine !== undefined) newLine++;
+			if (line.kind === "context") {
+				if (oldLine !== undefined) oldLine++;
+				if (newLine !== undefined) newLine++;
+			}
+		}
+		return side === "old" ? oldLine : newLine;
+	}
+
+	private makeAnchor(
+		side: "old" | "new",
+		line: number,
+		snippet: string,
+	): CommentAnchor {
+		return {
+			filePath: this.active.files[this.selectedFile]?.path ?? "",
+			side,
+			line,
+			snippet,
+		};
+	}
+
+	private requestCommentAt(anchor: CommentAnchor | undefined): void {
+		if (!anchor || !this.options.requestComment || this.pendingComment) return;
+		this.pendingComment = true;
+		void this.options
+			.requestComment(anchor)
+			.then((text) => {
+				if (text?.trim())
+					this.comments.push({
+						id: `${Date.now()}-${this.comments.length}`,
+						...anchor,
+						text: text.trim(),
+					});
+				this.pendingComment = false;
+			})
+			.catch(() => {
+				this.pendingComment = false;
+			});
+	}
+
+	getComments(): DiffComment[] {
+		return this.comments.map((comment) => ({ ...comment }));
 	}
 
 	private handleHeaderClick(column: number): void {
