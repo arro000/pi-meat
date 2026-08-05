@@ -162,7 +162,6 @@ For unresolved problems, follow the [support guide](SUPPORT.md).
 - [Architecture](docs/ARCHITECTURE.md): components, model bridge, protocol, and trust boundaries.
 - [Privacy](docs/PRIVACY.md): provider data, local artifacts, credentials, and deletion.
 - [Contributing](CONTRIBUTING.md): development setup, tests, and pull requests.
-- [Releasing](docs/RELEASING.md): maintainer publishing and Pi catalog procedure.
 - [Changelog](CHANGELOG.md) and [roadmap](PLAN.md): current status and planned work.
 
 pi-meat is an independent integration. It is not affiliated with or endorsed by Pi maintainers or Bold Software, Inc. Meat attribution is provided in [NOTICE](NOTICE); naming and visual guidance live in the [brand guide](docs/BRAND.md).
