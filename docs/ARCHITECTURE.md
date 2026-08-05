@@ -17,12 +17,13 @@ Pi extension → pi-ai → configured provider
 
 ## Runtime flow
 
-1. The extension resolves the selected Git diff and the active or configured Pi model.
-2. The local Go helper runs Meat's original `Abridge` engine without provider credentials.
-3. For each `meat.Model.Generate` call, the helper sends provider-neutral messages and tools over the versioned JSONL pipe.
-4. The extension performs the request through `pi-ai` in the Pi process, then returns the assistant response to Meat. Full provider response state stays in that model conversation.
-5. Meat handles validation, chunking, folds, and elisions. The extension stores the original and reading diffs and opens the viewer.
-6. The viewer marks commented files and lines, and opens an overlaid dialog to inspect or edit the selected comment. Each comment is anchored to file, old/new side, line, and code snippet. On review, the extension appends them to Pi's user message; the original diff remains immutable.
+1. The extension resolves the selected Git diff, configured Pi model, and model-supported Meat thinking level.
+2. The viewer opens immediately on the original diff. Its reading view shows Meat progress while abridgement runs.
+3. The local Go helper runs Meat's original `Abridge` engine without provider credentials.
+4. For each `meat.Model.Generate` call, the helper sends provider-neutral messages and tools over the versioned JSONL pipe.
+5. The extension performs the request through `pi-ai` in the Pi process, then returns the assistant response to Meat. Full provider response state stays in that model conversation.
+6. Meat handles validation, chunking, folds, and elisions. The extension stores the original and reading diffs, then updates the open viewer in place.
+7. The viewer marks commented files and lines, and opens an overlaid dialog to inspect or edit the selected comment. Each comment is anchored to file, old/new side, line, and code snippet. On review, the extension appends them to Pi's user message; the original diff remains immutable.
 
 Repository read and grep tools are disabled. The model receives the selected Git diff and abridgement conversation, not unrelated repository files.
 

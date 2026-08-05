@@ -4,6 +4,11 @@ All notable changes to pi-meat are documented here. Format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Added
+
+- Open the original diff immediately and show Meat chunk and turn progress while the reading diff is generated.
+- Add an independent model-supported Meat thinking level to `/meat-settings` and cache identity.
+
 ## [0.1.1] - 2026-08-05
 
 ### Added

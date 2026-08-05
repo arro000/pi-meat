@@ -51,7 +51,7 @@ export interface MeatDiffViewerOptions {
 	theme: Theme;
 	summary: string;
 	originalDiff: string;
-	readingDiff: string;
+	readingDiff?: string;
 	modelLabel: string;
 	viewportHeight: () => number;
 	done: (action: ViewerAction) => void;
@@ -79,14 +79,43 @@ export class MeatDiffViewer {
 	private hoverAnchor: CommentAnchor | undefined;
 	private pendingComment = false;
 	private comments: DiffComment[] = [];
-	private readonly reading: ParsedDiff;
+	private reading: ParsedDiff | undefined;
 	private readonly original: ParsedDiff;
 	private readonly options: MeatDiffViewerOptions;
+	private summary: string;
+	private progressMessage = "Starting Meat…";
+	private readingError: string | undefined;
 
 	constructor(options: MeatDiffViewerOptions) {
 		this.options = options;
 		this.original = parseUnifiedDiff(options.originalDiff);
-		this.reading = parseUnifiedDiff(options.readingDiff);
+		this.reading =
+			options.readingDiff === undefined
+				? undefined
+				: parseUnifiedDiff(options.readingDiff);
+		this.summary = options.summary;
+		if (!this.reading) this.mode = "original";
+	}
+
+	setProgress(message: string): void {
+		if (!this.reading && !this.readingError) this.progressMessage = message;
+	}
+
+	setReading(readingDiff: string, summary: string): void {
+		const path = this.active.files[this.selectedFile]?.path;
+		this.reading = parseUnifiedDiff(readingDiff);
+		this.summary = summary;
+		this.readingError = undefined;
+		if (this.mode === "reading" && path) {
+			const match = this.reading.files.findIndex((file) => file.path === path);
+			if (match >= 0) this.selectedFile = match;
+		}
+		this.scroll = 0;
+		this.horizontalScroll = 0;
+	}
+
+	setReadingError(message: string): void {
+		if (!this.reading) this.readingError = message;
 	}
 
 	handleInput(data: string): void {
@@ -240,7 +269,9 @@ export class MeatDiffViewer {
 	dispose(): void {}
 
 	private get active(): ParsedDiff {
-		return this.mode === "reading" ? this.reading : this.original;
+		return this.mode === "reading" && this.reading
+			? this.reading
+			: this.original;
 	}
 	private get selectedLines(): DiffLine[] {
 		return fileLines(this.active, this.selectedFile);
@@ -311,13 +342,17 @@ export class MeatDiffViewer {
 				? theme.fg("accent", theme.bold("ORIGINAL"))
 				: theme.fg("dim", "ORIGINAL");
 		const layout = effectiveLayout === "split" ? "SIDE-BY-SIDE" : "UNIFIED";
+		let detail = `Meat is processing · ${this.progressMessage}`;
+		if (this.reading) detail = this.summary || "Reading diff";
+		else if (this.readingError)
+			detail = `Reading diff failed: ${this.readingError}`;
 		return [
 			fit(
 				`${theme.fg("accent", theme.bold("🥩 pi-meat"))}  ${reading}  ${original}  ${theme.fg("muted", layout)}`,
 				width,
 			),
 			fit(
-				`${theme.fg("text", sanitizeTerminalText(this.options.summary || "Reading diff"))} ${theme.fg("dim", `· ${sanitizeTerminalText(this.options.modelLabel)}`)}`,
+				`${theme.fg("text", sanitizeTerminalText(detail))} ${theme.fg("dim", `· ${sanitizeTerminalText(this.options.modelLabel)}`)}`,
 				width,
 			),
 			fit(theme.fg("borderMuted", "─".repeat(width)), width),
@@ -396,6 +431,23 @@ export class MeatDiffViewer {
 		height: number,
 		layout: LayoutMode,
 	): string[] {
+		if (this.mode === "reading" && !this.reading) {
+			return this.readingError
+				? [
+						this.options.theme.fg("error", "Reading diff failed"),
+						this.options.theme.fg(
+							"muted",
+							sanitizeTerminalText(this.readingError),
+						),
+					]
+				: [
+						this.options.theme.fg("accent", "Meat is processing…"),
+						this.options.theme.fg(
+							"muted",
+							sanitizeTerminalText(this.progressMessage),
+						),
+					];
+		}
 		if (!this.active.files[this.selectedFile])
 			return [this.options.theme.fg("muted", "No changed files")];
 		if (this.collapsed)

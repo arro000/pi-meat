@@ -84,6 +84,51 @@ test("renders bounded side-by-side content with stable file sidebar", () => {
 	assert.ok(second.some((line) => line.includes("2/2 · src/b.ts")));
 });
 
+test("shows Meat progress until the reading diff is ready", () => {
+	const viewer = new MeatDiffViewer({
+		theme,
+		summary: "",
+		originalDiff: diff,
+		modelLabel: "provider/model · thinking:high",
+		viewportHeight: () => 10,
+		done: () => {},
+	});
+
+	assert.ok(viewer.render(98).some((line) => line.includes("old one")));
+	viewer.handleInput("\t");
+	viewer.setProgress("chunk 2/3: thinking (turn 4)");
+	const pending = viewer.render(98);
+	assert.ok(pending.some((line) => line.includes("Meat is processing")));
+	assert.ok(
+		pending.some((line) => line.includes("chunk 2/3: thinking (turn 4)")),
+	);
+
+	viewer.setReading(diff, "Focused review");
+	const ready = viewer.render(98);
+	assert.ok(ready.some((line) => line.includes("Focused review")));
+	assert.ok(ready.some((line) => line.includes("old one")));
+});
+
+test("keeps the original diff available when reading generation fails", () => {
+	const viewer = new MeatDiffViewer({
+		theme,
+		summary: "",
+		originalDiff: diff,
+		modelLabel: "provider/model",
+		viewportHeight: () => 10,
+		done: () => {},
+	});
+
+	viewer.handleInput("\t");
+	viewer.setReadingError("provider failed\u001b[31m");
+	const failed = viewer.render(98);
+	assert.ok(failed.some((line) => line.includes("Reading diff failed")));
+	assert.ok(failed.every((line) => !line.includes("\u001b")));
+
+	viewer.handleInput("\t");
+	assert.ok(viewer.render(98).some((line) => line.includes("old one")));
+});
+
 test("adds subtle backgrounds to added and removed lines", () => {
 	const backgrounds: string[] = [];
 	const backgroundTheme = {

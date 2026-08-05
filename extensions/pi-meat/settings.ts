@@ -2,6 +2,11 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import {
+	clampThinkingLevel,
+	getSupportedThinkingLevels,
+	type ModelThinkingLevel,
+} from "@earendil-works/pi-ai";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
 	getSelectListTheme,
@@ -19,7 +24,18 @@ import { sanitizeTerminalText } from "./terminal.ts";
 
 export interface MeatSettings {
 	defaultModel?: string;
+	thinkingLevel?: ModelThinkingLevel;
 }
+
+const THINKING_LEVELS: ModelThinkingLevel[] = [
+	"off",
+	"minimal",
+	"low",
+	"medium",
+	"high",
+	"xhigh",
+	"max",
+];
 
 const settingsPath = () =>
 	process.env.PI_MEAT_SETTINGS ??
@@ -53,7 +69,17 @@ export async function loadMeatSettings(): Promise<MeatSettings> {
 		typeof value.defaultModel !== "string"
 	)
 		throw new Error("Invalid pi-meat settings: defaultModel must be a string");
-	return value.defaultModel ? { defaultModel: value.defaultModel } : {};
+	if (
+		value.thinkingLevel !== undefined &&
+		!THINKING_LEVELS.includes(value.thinkingLevel)
+	)
+		throw new Error(
+			"Invalid pi-meat settings: thinkingLevel must be a supported level",
+		);
+	return {
+		...(value.defaultModel ? { defaultModel: value.defaultModel } : {}),
+		...(value.thinkingLevel ? { thinkingLevel: value.thinkingLevel } : {}),
+	};
 }
 
 async function saveMeatSettings(settings: MeatSettings): Promise<void> {
@@ -136,6 +162,24 @@ export async function openMeatSettings(ctx: ExtensionContext): Promise<void> {
 
 	await ctx.ui.custom((tui, theme, _keybindings, done) => {
 		let pendingSave: Promise<void> = Promise.resolve();
+		const selectedModel = () =>
+			available.find((model) => `${model.provider}/${model.id}` === current) ??
+			available[0];
+		const selectedThinkingLevel = () => {
+			const model = selectedModel();
+			return model
+				? clampThinkingLevel(
+						model,
+						settings.thinkingLevel ?? ctx.thinkingLevel ?? "medium",
+					)
+				: "off";
+		};
+		const supportedThinkingLevels = () => {
+			const model = selectedModel();
+			return model
+				? getSupportedThinkingLevels(model)
+				: (["off"] as ModelThinkingLevel[]);
+		};
 		const modelItems: SelectItem[] = available.map((model) => ({
 			value: `${model.provider}/${model.id}`,
 			label: sanitizeTerminalText(`${model.provider}/${model.id}`),
@@ -145,7 +189,7 @@ export async function openMeatSettings(ctx: ExtensionContext): Promise<void> {
 			{
 				id: "defaultModel",
 				label: "Meat model",
-				currentValue: current,
+				currentValue: current ?? "",
 				description: "Model used by Meat. Pi active model remains unchanged.",
 				submenu: (value, selectDone) => {
 					const picker = new SelectList(
@@ -160,21 +204,46 @@ export async function openMeatSettings(ctx: ExtensionContext): Promise<void> {
 					return picker;
 				},
 			},
+			{
+				id: "thinkingLevel",
+				label: "Meat thinking",
+				currentValue: selectedThinkingLevel(),
+				description: "Reasoning depth used by Meat only.",
+				submenu: (value, selectDone) => {
+					const thinkingItems: SelectItem[] = supportedThinkingLevels().map(
+						(level) => ({ value: level, label: level }),
+					);
+					const picker = new SelectList(
+						thinkingItems,
+						thinkingItems.length,
+						getSelectListTheme(),
+					);
+					const index = thinkingItems.findIndex((item) => item.value === value);
+					if (index >= 0) picker.setSelectedIndex(index);
+					picker.onSelect = (item) => selectDone(item.value);
+					picker.onCancel = () => selectDone();
+					return picker;
+				},
+			},
 		];
 		const list = new SettingsList(
 			items,
-			4,
+			5,
 			getSettingsListTheme(),
-			(_id, value) => {
-				settings.defaultModel = value;
+			(id, value) => {
+				if (id === "defaultModel") {
+					settings.defaultModel = value;
+					current = value;
+				} else settings.thinkingLevel = value as ModelThinkingLevel;
 				const snapshot = { ...settings };
+				const status = `${id === "defaultModel" ? "model" : "thinking"}: ${value}`;
 				pendingSave = pendingSave
 					.then(() => saveMeatSettings(snapshot))
 					.then(
 						() =>
 							ctx.ui.setStatus(
 								"pi-meat",
-								`🥩 model: ${sanitizeTerminalText(value)}`,
+								`🥩 ${sanitizeTerminalText(status)}`,
 							),
 						(error) =>
 							ctx.ui.notify(
@@ -192,7 +261,7 @@ export async function openMeatSettings(ctx: ExtensionContext): Promise<void> {
 			new Text(theme.fg("accent", theme.bold("🥩 pi-meat settings")), 1, 1),
 		);
 		container.addChild(
-			new Text(theme.fg("dim", "Enter opens model list · Esc closes"), 1, 0),
+			new Text(theme.fg("dim", "Enter changes setting · Esc closes"), 1, 0),
 		);
 		container.addChild(list);
 		return {
