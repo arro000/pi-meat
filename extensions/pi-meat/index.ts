@@ -318,9 +318,11 @@ function startMouseReporting(terminal: Terminal): () => void {
 	const stop = () => {
 		if (!active) return;
 		active = false;
-		terminal.write("\x1b[?1000l\x1b[?1006l");
+		terminal.write("\x1b[?1002l\x1b[?1006l");
 	};
-	terminal.write("\x1b[?1000h\x1b[?1006h");
+	// Button-event tracking reports wheel events, including horizontal wheels.
+	// 1000 is not enough in terminals that expose tilt wheels as button events.
+	terminal.write("\x1b[?1002h\x1b[?1006h");
 	process.once("exit", stop);
 	return () => {
 		process.removeListener("exit", stop);
