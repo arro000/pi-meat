@@ -241,10 +241,7 @@ export async function openMeatSettings(ctx: ExtensionContext): Promise<void> {
 					.then(() => saveMeatSettings(snapshot))
 					.then(
 						() =>
-							ctx.ui.setStatus(
-								"pi-meat",
-								`🥩 ${sanitizeTerminalText(status)}`,
-							),
+							ctx.ui.setStatus("pi-meat", `🥩 ${sanitizeTerminalText(status)}`),
 						(error) =>
 							ctx.ui.notify(
 								`Could not save settings: ${sanitizeTerminalText(error instanceof Error ? error.message : String(error))}`,

@@ -266,10 +266,7 @@ export default function piMeat(pi: ExtensionAPI) {
 								},
 							})
 								.then(async (computed) => {
-									const computedPaths = artifactPaths(
-										cacheRoot,
-										randomUUID(),
-									);
+									const computedPaths = artifactPaths(cacheRoot, randomUUID());
 									await persistArtifacts(computedPaths, computed, diff, {
 										source,
 										model: meatModelLabel,
