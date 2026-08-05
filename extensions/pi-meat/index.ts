@@ -44,6 +44,66 @@ interface ArtifactEntry {
 	cached: boolean;
 }
 
+type MeatAction = "explore" | "review";
+
+const SOURCE_OPTIONS = [
+	"Latest commit (HEAD)",
+	"Staged changes",
+	"Unstaged changes",
+	"All local changes",
+	"Commit range",
+	"Branch compared with main",
+	"Custom revision or range",
+];
+
+function sourceFromMenuChoice(choice: string): string | undefined {
+	switch (choice) {
+		case "Latest commit (HEAD)":
+			return "HEAD";
+		case "Staged changes":
+			return "staged";
+		case "Unstaged changes":
+			return "worktree";
+		case "All local changes":
+			return "all";
+		case "Branch compared with main":
+			return "main...HEAD";
+	}
+	return undefined;
+}
+
+async function chooseMeatSource(
+	ctx: ExtensionCommandContext,
+): Promise<string | undefined> {
+	const choice = await ctx.ui.select(
+		"What do you want to examine?",
+		SOURCE_OPTIONS,
+	);
+	if (!choice) return undefined;
+	const source = sourceFromMenuChoice(choice);
+	if (source) return source;
+	const placeholder =
+		choice === "Commit range"
+			? "e.g. v1.2.0..HEAD or main...HEAD"
+			: "e.g. HEAD~3, feature...main, or a commit SHA";
+	return (
+		(await ctx.ui.input("Enter a revision or range", placeholder))?.trim() ||
+		undefined
+	);
+}
+
+async function chooseMeatAction(
+	ctx: ExtensionCommandContext,
+): Promise<MeatAction | undefined> {
+	const choice = await ctx.ui.select("What do you want to do?", [
+		"Explore changes",
+		"Review changes with Pi",
+	]);
+	if (choice === "Review changes with Pi") return "review";
+	if (choice === "Explore changes") return "explore";
+	return undefined;
+}
+
 export default function piMeat(pi: ExtensionAPI) {
 	pi.registerEntryRenderer("pi-meat-result", (entry, _options, theme) => {
 		const data = entry.data as ArtifactEntry;
@@ -72,6 +132,17 @@ export default function piMeat(pi: ExtensionAPI) {
 			}
 
 			try {
+				const menuRequested = args.trim() === "" || args.trim() === "--fresh";
+				const parsedArgs = parseArgs(args);
+				const selectedSource = menuRequested
+					? await chooseMeatSource(ctx)
+					: parsedArgs.source;
+				if (!selectedSource) return;
+				const selectedAction: MeatAction | undefined = menuRequested
+					? await chooseMeatAction(ctx)
+					: "explore";
+				if (!selectedAction) return;
+
 				const settings = await loadMeatSettings();
 				const model = await resolveMeatModel(ctx, settings.defaultModel);
 				if (!model) {
@@ -81,12 +152,11 @@ export default function piMeat(pi: ExtensionAPI) {
 					);
 					return;
 				}
-				const parsedArgs = parseArgs(args);
 				const repoRoot = await gitRoot(pi, ctx);
 				const { diff, source } = await readGitDiff(
 					pi,
 					repoRoot,
-					parsedArgs.source,
+					selectedSource,
 				);
 				if (!diff.trim()) throw new Error(`No changes found for ${source}`);
 
@@ -211,7 +281,7 @@ export default function piMeat(pi: ExtensionAPI) {
 					},
 				);
 
-				if (action === "review") {
+				if (selectedAction === "review" || action === "review") {
 					pi.sendUserMessage(
 						`Review the ${source} changes. Meat's reading diff is at ${paths.reading}; the immutable original diff is at ${paths.original}. Start from the reading diff for intent, but verify every finding against the original diff and repository source. Focus on correctness, regressions, security, and architectural consequences rather than style.`,
 					);

@@ -2,7 +2,7 @@
 
 # 🥩 pi-meat
 
-### Read the change. Skip the gristle.
+### Read the change. Skip the gristle
 
 Navigable reading diffs for [Pi](https://pi.dev), powered by [Meat](https://meat.dev) and your existing Pi model.
 
@@ -59,16 +59,29 @@ Pi packages run with your full user permissions. Review the source and [security
 
 1. Start Pi inside a Git repository.
 2. Authenticate and select a model in Pi as usual.
-3. Run `/meat` to read the latest commit.
+3. Run `/meat` and choose what to examine and what to do.
 4. Press `Tab` whenever you need the complete original diff.
 
 Open `/meat-settings` if you want Meat to use a persistent model instead of Pi's active model.
 
 ## Choose changes
 
+Running `/meat` without arguments opens an interactive menu. First choose what to examine:
+
+- Latest commit (`HEAD`)
+- Staged changes
+- Unstaged changes
+- All local changes
+- A commit range, such as `v1.2.0..HEAD`
+- Current branch compared with `main` (`main...HEAD`)
+- A custom revision or range
+
+Then choose whether to explore the reading diff or review the changes with Pi. The menu requires Pi's interactive TUI.
+
+CLI shortcuts remain available:
+
 | Command | Changes opened |
 | --- | --- |
-| `/meat` | Latest commit (`HEAD`) |
 | `/meat <revision>` | Specific commit |
 | `/meat main...HEAD` | Revision or branch range |
 | `/meat staged` | Staged changes |
@@ -77,7 +90,7 @@ Open `/meat-settings` if you want Meat to use a persistent model instead of Pi's
 | `/meat all` | Staged and unstaged changes |
 | `/meat HEAD --fresh` | Ignore the matching cached result and create a new one |
 
-pi-meat accepts one revision, range, or named selector per run. It must run inside a Git repository and currently requires Pi's interactive TUI.
+pi-meat accepts one revision, range, or named selector per run. It must run inside a Git repository.
 
 ## Viewer controls
 
