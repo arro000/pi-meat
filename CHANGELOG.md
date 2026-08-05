@@ -4,6 +4,16 @@ All notable changes to pi-meat are documented here. Format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Changed
+
+- Updated pinned GitHub Actions.
+- Switched npm releases from a static token to OIDC trusted publishing.
+
+### Security
+
+- Neutralized Unicode bidirectional controls in terminal-rendered diff content.
+- Added full development-toolchain auditing while retaining stricter runtime dependency gates.
+
 ## [0.1.0] - 2026-08-04
 
 ### Added

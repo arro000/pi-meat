@@ -56,7 +56,7 @@
     "test": "node --test test/*.test.ts && go -C bridge test ./...",
     "format:check": "node scripts/check-go-format.mjs",
     "package:smoke": "node scripts/package-smoke.mjs",
-    "release:check": "npm test && npm run check && npm run format:check && npm audit --omit=dev --audit-level=high && npm run package:smoke",
+    "release:check": "npm test && npm run check && npm run format:check && npm audit --omit=dev --audit-level=high && npm audit --audit-level=critical && npm run package:smoke",
     "prepublishOnly": "npm run release:check"
   },
   "pi": {

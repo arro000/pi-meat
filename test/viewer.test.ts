@@ -355,6 +355,20 @@ test("sanitizes control characters decoded from quoted Git paths", () => {
 	const c1Lines = c1Viewer.render(72);
 	assert.ok(c1Lines.some((line) => line.includes("evil�31m.ts")));
 	assert.ok(c1Lines.every((line) => !line.includes("\u009b")));
+
+	const bidiDiff = pathDiff.replaceAll("name.ts", "\u202ename.ts");
+	const bidiViewer = new MeatDiffViewer({
+		theme,
+		summary: "Bidi path controls",
+		originalDiff: bidiDiff,
+		readingDiff: bidiDiff,
+		modelLabel: "provider/model",
+		viewportHeight: () => 8,
+		done: () => {},
+	});
+	const bidiLines = bidiViewer.render(72);
+	assert.ok(bidiLines.some((line) => line.includes("evil��name.ts")));
+	assert.ok(bidiLines.every((line) => !line.includes("\u202e")));
 });
 
 test("reaches final unified line and sanitizes terminal controls", () => {
