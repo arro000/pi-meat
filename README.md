@@ -12,6 +12,8 @@ Navigable reading diffs for [Pi](https://pi.dev), powered by [Meat](https://meat
 
 ![pi-meat preview](assets/pi-meat-preview.png)
 
+![pi-meat comment dialog](assets/preview.png)
+
 </div>
 
 pi-meat turns a Git diff into a smaller reading diff, then opens both versions in a navigable terminal viewer. It uses the model already authenticated in Pi: no second provider account or API key is required.
@@ -59,11 +61,10 @@ Pi packages run with your full user permissions. Review the source and [security
 
 1. Start Pi inside a Git repository.
 2. Authenticate and select a model in Pi as usual.
-3. Run `/meat` and choose what to examine and what to do.
-4. Press `Tab` whenever you need the complete original diff.
-5. Click a code line (or press `c`) to add a comment; press `r` to send comments with review request to Pi.
-
-Open `/meat-settings` if you want Meat to use a persistent model instead of Pi's active model.
+3. Run `/meat-settings` to set Meat's persistent default model.
+4. Run `/meat` and choose what to examine and what to do.
+5. Press `Tab` whenever you need the complete original diff.
+6. Click a code line (or press `c`), type the comment in the overlaid dialog, and press `Enter`; click a marked line to read or edit its comment, then press `r` to send comments with the review request to Pi.
 
 ## Choose changes
 
@@ -104,14 +105,14 @@ pi-meat accepts one revision, range, or named selector per run. It must run insi
 | `s` | Toggle side-by-side / unified layout |
 | `Space` | Fold / unfold the current file |
 | `Tab` | Toggle reading / original diff |
-| `c` | Add comment on selected/clicked code line |
+| `c` | Add or edit the selected line's comment (`Enter` saves, empty input deletes, `Esc` cancels) |
 | `r` | Close the viewer and ask Pi for a verified review, including comments |
 | `?` | Toggle help |
 | `q` / `Esc` | Close |
-| Mouse click / wheel | Select a sidebar file / scroll the diff |
+| Mouse hover / click / wheel | Highlight a code line, select a sidebar file, add/edit a line comment, or scroll the diff |
 | Horizontal wheel / `Shift` + wheel | Scroll horizontally when supported by the terminal |
 
-Wide terminals show a file sidebar and old/new panes. Medium terminals keep full-width side-by-side panes; narrow terminals switch to unified layout. Hold `Shift` for terminal-native text selection while mouse reporting is active.
+Wide terminals show a file sidebar and old/new panes. Commented files show a `💬` count, and commented lines show `💬` beside the diff marker. Medium terminals keep full-width side-by-side panes; narrow terminals switch to unified layout. Hold `Shift` for terminal-native text selection while mouse reporting is active.
 
 ## Model settings
 

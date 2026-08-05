@@ -4,6 +4,8 @@ import {
 	type Theme,
 } from "@earendil-works/pi-coding-agent";
 import {
+	type Focusable,
+	Input,
 	Key,
 	matchesKey,
 	sliceByColumn,
@@ -27,6 +29,7 @@ import { sanitizeTerminalText } from "./terminal.ts";
 export type ViewerAction = "close" | "review";
 type ViewMode = "reading" | "original";
 type LayoutMode = "split" | "unified";
+const COMMENT_ICON = "💬";
 
 export interface DiffComment {
 	id: string;
@@ -52,7 +55,11 @@ export interface MeatDiffViewerOptions {
 	modelLabel: string;
 	viewportHeight: () => number;
 	done: (action: ViewerAction) => void;
-	requestComment?: (anchor: CommentAnchor) => Promise<string | undefined>;
+	requestComment?: (
+		anchor: CommentAnchor,
+		currentText: string | undefined,
+	) => Promise<string | undefined>;
+	requestRender?: () => void;
 }
 
 export class MeatDiffViewer {
@@ -69,6 +76,7 @@ export class MeatDiffViewer {
 	private lastContentWidth = 88;
 	private lastSidebarWidth = 0;
 	private lastBodyStartRow = 3;
+	private hoverAnchor: CommentAnchor | undefined;
 	private pendingComment = false;
 	private comments: DiffComment[] = [];
 	private readonly reading: ParsedDiff;
@@ -87,11 +95,16 @@ export class MeatDiffViewer {
 			this.handleMouse(mouse);
 			return;
 		}
-		if (matchesKey(data, Key.escape) || data === "q")
-			return this.options.done("close");
-		if (data === "r") return this.options.done("review");
+		if (matchesKey(data, Key.escape) || data === "q") {
+			this.options.done("close");
+			return;
+		}
+		if (data === "r") {
+			this.options.done("review");
+			return;
+		}
 		if (data === "c") {
-			this.requestCommentAt(this.selectedContentPosition());
+			this.startCommentAt(this.selectedContentPosition());
 			return;
 		}
 		if (data === "?") {
@@ -143,7 +156,6 @@ export class MeatDiffViewer {
 		const w = Math.max(1, width);
 		const theme = this.options.theme;
 		this.ensureSelection();
-		const file = this.active.files[this.selectedFile];
 		const sidebarWidth = this.sidebarWidth(w);
 		const contentWidth = Math.max(
 			1,
@@ -184,31 +196,44 @@ export class MeatDiffViewer {
 				);
 		}
 		lines.push(fit(theme.fg("borderMuted", "─".repeat(w)), w));
+		lines.push(...this.renderFooter(w, effectiveLayout, contentWidth));
+		return lines;
+	}
+
+	private renderFooter(
+		width: number,
+		layout: LayoutMode,
+		contentWidth: number,
+	): string[] {
+		const theme = this.options.theme;
+		const file = this.active.files[this.selectedFile];
 		const position = file
 			? `${this.selectedFile + 1}/${this.active.files.length} · ${sanitizeTerminalText(file.path)}`
 			: "No changed files";
-		const sourceWidth = this.sourceViewportWidth(effectiveLayout, contentWidth);
+		const sourceWidth = this.sourceViewportWidth(layout, contentWidth);
 		const sourceLength = Math.max(sourceWidth, this.maxSourceWidth);
 		const columnEnd = Math.min(
 			sourceLength,
 			this.horizontalScroll + sourceWidth,
 		);
-		lines.push(
+		let commentCount = "";
+		if (this.comments.length > 0) {
+			const noun = this.comments.length === 1 ? "comment" : "comments";
+			commentCount = ` · ${this.comments.length} ${noun}`;
+		}
+		return [
 			fit(
 				`${theme.fg("accent", position)} ${theme.fg("dim", `· line ${this.scroll + 1}/${Math.max(1, this.contentLength)} · col ${this.horizontalScroll + 1}-${Math.max(this.horizontalScroll + 1, columnEnd)}/${sourceLength}`)}`,
-				w,
+				width,
 			),
-		);
-		lines.push(
 			fit(
 				theme.fg(
 					"dim",
-					`j/k ↑/↓ vertical · h/l ←/→ horizontal · c comment · r review${this.comments.length ? ` · ${this.comments.length} comment${this.comments.length === 1 ? "" : "s"}` : ""}`,
+					`j/k ↑/↓ vertical · h/l ←/→ horizontal · c comment · r review · ? help${commentCount}`,
 				),
-				w,
+				width,
 			),
-		);
-		return lines;
+		];
 	}
 
 	invalidate(): void {}
@@ -348,7 +373,10 @@ export class MeatDiffViewer {
 		width: number,
 	): string {
 		const theme = this.options.theme;
-		const counts = `+${file.added} -${file.removed}`;
+		const commentCount = this.comments.filter(
+			(comment) => comment.filePath === file.path,
+		).length;
+		const counts = `+${file.added} -${file.removed}${commentCount ? ` ${COMMENT_ICON}${commentCount}` : ""}`;
 		const marker = selected ? "▶ " : "  ";
 		const pathWidth = Math.max(
 			4,
@@ -398,17 +426,28 @@ export class MeatDiffViewer {
 				line.kind,
 				this.options.theme,
 			);
+			const oldLine = this.lineNumberForUnified(lines, index, "old");
+			const newLine = this.lineNumberForUnified(lines, index, "new");
+			const commented =
+				(oldLine !== undefined && this.hasComment("old", oldLine)) ||
+				(newLine !== undefined && this.hasComment("new", newLine));
+			const hovered =
+				(oldLine !== undefined && this.isHovered("old", oldLine)) ||
+				(newLine !== undefined && this.isHovered("new", newLine));
+			const commentMarker = commented
+				? this.options.theme.fg("accent", COMMENT_ICON)
+				: " ".repeat(visibleWidth(COMMENT_ICON));
+			const prefix = `${marker}${commentMarker} `;
 			const source = cropHighlightedSource(
 				highlighted.get(index) ??
 					sanitizeTerminalText(stripDiffMarker(line.text)),
 				this.horizontalScroll,
-				Math.max(0, width - 2),
+				Math.max(0, width - visibleWidth(prefix)),
 			);
-			return colorLineBackground(
-				fit(`${marker} ${source}`, width),
-				line.kind,
-				this.options.theme,
-			);
+			const value = fit(`${prefix}${source}`, width);
+			return hovered
+				? this.options.theme.bg("selectedBg", pad(value, width))
+				: colorLineBackground(value, line.kind, this.options.theme);
 		});
 	}
 
@@ -461,6 +500,8 @@ export class MeatDiffViewer {
 			this.horizontalScroll,
 			highlighted?.left,
 			this.options.theme,
+			row.left?.number !== undefined && this.hasComment("old", row.left.number),
+			row.left?.number !== undefined && this.isHovered("old", row.left.number),
 		);
 		const right = renderNumbered(
 			row.right,
@@ -469,6 +510,10 @@ export class MeatDiffViewer {
 			this.horizontalScroll,
 			highlighted?.right,
 			this.options.theme,
+			row.right?.number !== undefined &&
+				this.hasComment("new", row.right.number),
+			row.right?.number !== undefined &&
+				this.isHovered("new", row.right.number),
 		);
 		return `${pad(left, columnWidth)}${divider}${fit(right, columnWidth)}`;
 	}
@@ -481,9 +526,12 @@ export class MeatDiffViewer {
 	private sourceViewportWidth(layout: LayoutMode, width: number): number {
 		if (layout === "split") {
 			const columnWidth = Math.max(1, Math.floor((width - 3) / 2));
-			return Math.max(0, columnWidth - this.lineNumberWidth - 3);
+			return Math.max(
+				0,
+				columnWidth - this.lineNumberWidth - 3 - visibleWidth(COMMENT_ICON),
+			);
 		}
-		return Math.max(0, width - 2);
+		return Math.max(0, width - 2 - visibleWidth(COMMENT_ICON));
 	}
 
 	private toggleMode(): void {
@@ -519,25 +567,33 @@ export class MeatDiffViewer {
 
 	private handleMouse(event: MouseEvent): void {
 		if (event.action === "wheel-up") {
+			this.hoverAnchor = undefined;
 			this.scrollBy(-3);
 			return;
 		}
 		if (event.action === "wheel-down") {
+			this.hoverAnchor = undefined;
 			this.scrollBy(3);
 			return;
 		}
 		if (event.action === "wheel-left") {
+			this.hoverAnchor = undefined;
 			this.scrollHorizontally(-4);
 			return;
 		}
 		if (event.action === "wheel-right") {
+			this.hoverAnchor = undefined;
 			this.scrollHorizontally(4);
 			return;
 		}
-		if (event.action !== "press") return;
 
 		const row = event.y - 1;
 		const column = event.x - 1;
+		if (event.action === "move") {
+			this.hoverAnchor = this.contentPositionForMouse(row, column);
+			return;
+		}
+		if (event.action !== "press") return;
 		if (row === 0) {
 			this.handleHeaderClick(column);
 			return;
@@ -549,14 +605,24 @@ export class MeatDiffViewer {
 				this.selectFileIndex(fileIndex);
 			return;
 		}
-		if (this.lastSidebarWidth > 0) {
-			const contentColumn = column - this.lastSidebarWidth - 3;
-			if (contentColumn < 0) return;
-		}
+		const anchor = this.contentPositionForMouse(row, column);
+		if (anchor) this.startCommentAt(anchor);
+	}
+
+	private contentPositionForMouse(
+		row: number,
+		column: number,
+	): CommentAnchor | undefined {
+		if (
+			row < this.lastBodyStartRow ||
+			row >= this.lastBodyStartRow + this.lastBodyHeight
+		)
+			return undefined;
 		const contentColumn =
 			this.lastSidebarWidth > 0 ? column - this.lastSidebarWidth - 3 : column;
-		const anchor = this.contentPositionAt(row, contentColumn);
-		if (anchor) this.requestCommentAt(anchor);
+		if (contentColumn < 0 || contentColumn >= this.lastContentWidth)
+			return undefined;
+		return this.contentPositionAt(row, contentColumn);
 	}
 
 	private contentPositionAt(
@@ -566,10 +632,12 @@ export class MeatDiffViewer {
 		const contentRow = row - this.lastBodyStartRow;
 		if (contentRow < 0) return undefined;
 		if (this.lastLayout === "split") {
+			const splitRowIndex = this.scroll + contentRow - 1;
+			if (splitRowIndex < 0) return undefined;
 			const rows = buildSplitRows(this.active, this.selectedFile).filter(
 				(item) => item.kind !== "meta" || showSplitMetadata(item),
 			);
-			const splitRow = rows[this.scroll + contentRow];
+			const splitRow = rows[splitRowIndex];
 			if (!splitRow || splitRow.kind !== "pair") return undefined;
 			const columnWidth = Math.max(
 				1,
@@ -580,17 +648,27 @@ export class MeatDiffViewer {
 			if (!line?.number) return undefined;
 			return this.makeAnchor(left ? "old" : "new", line.number, line.text);
 		}
-		const line = this.selectedLines[this.scroll + contentRow];
+		return this.unifiedContentPositionAt(contentRow);
+	}
+
+	private unifiedContentPositionAt(
+		contentRow: number,
+	): CommentAnchor | undefined {
+		const index = this.scroll + contentRow;
+		const line = this.selectedLines[index];
 		if (!line || !isUnifiedSourceLine(line)) return undefined;
-		const side = line.kind === "remove" ? "old" : "new";
-		const number = this.lineNumberForUnified(
-			this.selectedLines,
-			this.scroll + contentRow,
-			side,
-		);
-		return number === undefined
-			? undefined
-			: this.makeAnchor(side, number, stripDiffMarker(line.text));
+		const defaultSide = line.kind === "remove" ? "old" : "new";
+		const otherSide = defaultSide === "old" ? "new" : "old";
+		const snippet = stripDiffMarker(line.text);
+		let fallback: CommentAnchor | undefined;
+		for (const side of [defaultSide, otherSide] as const) {
+			const number = this.lineNumberForUnified(this.selectedLines, index, side);
+			if (number === undefined) continue;
+			const anchor = this.makeAnchor(side, number, snippet);
+			fallback ??= anchor;
+			if (this.commentAt(anchor)) return anchor;
+		}
+		return fallback;
 	}
 
 	private selectedContentPosition(): CommentAnchor | undefined {
@@ -638,22 +716,51 @@ export class MeatDiffViewer {
 		};
 	}
 
-	private requestCommentAt(anchor: CommentAnchor | undefined): void {
+	private commentAt(anchor: CommentAnchor): DiffComment | undefined {
+		return this.comments.find(
+			(comment) =>
+				comment.filePath === anchor.filePath &&
+				comment.side === anchor.side &&
+				comment.line === anchor.line,
+		);
+	}
+
+	private hasComment(side: "old" | "new", line: number): boolean {
+		return this.commentAt(this.makeAnchor(side, line, "")) !== undefined;
+	}
+
+	private isHovered(side: "old" | "new", line: number): boolean {
+		return (
+			this.hoverAnchor?.filePath ===
+				this.active.files[this.selectedFile]?.path &&
+			this.hoverAnchor.side === side &&
+			this.hoverAnchor.line === line
+		);
+	}
+
+	private startCommentAt(anchor: CommentAnchor | undefined): void {
 		if (!anchor || !this.options.requestComment || this.pendingComment) return;
+		const existing = this.commentAt(anchor);
 		this.pendingComment = true;
 		void this.options
-			.requestComment(anchor)
+			.requestComment(anchor, existing?.text)
 			.then((text) => {
-				if (text?.trim())
+				if (text === undefined) return;
+				const comment = text.trim();
+				if (existing && !comment)
+					this.comments.splice(this.comments.indexOf(existing), 1);
+				else if (existing) existing.text = comment;
+				else if (comment)
 					this.comments.push({
 						id: `${Date.now()}-${this.comments.length}`,
 						...anchor,
-						text: text.trim(),
+						text: comment,
 					});
-				this.pendingComment = false;
 			})
-			.catch(() => {
+			.catch(() => {})
+			.finally(() => {
 				this.pendingComment = false;
+				this.options.requestRender?.();
 			});
 	}
 
@@ -708,9 +815,75 @@ export class MeatDiffViewer {
 	}
 }
 
+export interface CommentDialogOptions {
+	theme: Theme;
+	anchor: CommentAnchor;
+	currentText: string | undefined;
+	done: (text: string | undefined) => void;
+	requestRender: () => void;
+}
+
+export class CommentDialog implements Focusable {
+	private readonly input = new Input();
+	private readonly options: CommentDialogOptions;
+
+	constructor(options: CommentDialogOptions) {
+		this.options = options;
+		this.input.setValue(options.currentText ?? "");
+		this.input.handleInput("\u001b[F");
+		this.input.onSubmit = (text) => options.done(text);
+		this.input.onEscape = () => options.done(undefined);
+	}
+
+	get focused(): boolean {
+		return this.input.focused;
+	}
+
+	set focused(value: boolean) {
+		this.input.focused = value;
+	}
+
+	handleInput(data: string): void {
+		this.input.handleInput(data);
+		this.options.requestRender();
+	}
+
+	render(width: number): string[] {
+		const innerWidth = Math.max(1, width - 2);
+		const { anchor, currentText, theme } = this.options;
+		const title = fit(
+			` ${currentText === undefined ? "Add comment" : "Edit comment"} · ${sanitizeTerminalText(anchor.filePath)}:${anchor.line} (${anchor.side}) `,
+			innerWidth,
+		);
+		const input = this.input.render(Math.max(1, innerWidth - 2))[0] ?? "";
+		const help =
+			currentText === undefined
+				? "Enter save · Esc cancel"
+				: "Enter save · empty deletes · Esc cancel";
+		return [
+			theme.fg("border", "╭") +
+				theme.fg("accent", title) +
+				theme.fg(
+					"border",
+					`${"─".repeat(Math.max(0, innerWidth - visibleWidth(title)))}╮`,
+				),
+			theme.fg("border", "│") +
+				pad(` ${input}`, innerWidth) +
+				theme.fg("border", "│"),
+			theme.fg("border", "│") +
+				pad(` ${theme.fg("dim", help)}`, innerWidth) +
+				theme.fg("border", "│"),
+			theme.fg("border", `╰${"─".repeat(innerWidth)}╯`),
+		];
+	}
+
+	invalidate(): void {}
+}
+
 type MouseAction =
 	| "press"
 	| "release"
+	| "move"
 	| "wheel-up"
 	| "wheel-down"
 	| "wheel-left"
@@ -723,7 +896,7 @@ interface MouseEvent {
 }
 
 function parseMouseEvent(data: string): MouseEvent | undefined {
-	const match = data.match(/^\x1b\[<(\d+);(\d+);(\d+)([Mm])$/);
+	const match = data.match(/^\u001b\[<(\d+);(\d+);(\d+)([Mm])$/);
 	if (!match) return undefined;
 	const button = Number(match[1]);
 	const x = Number(match[2]);
@@ -739,6 +912,7 @@ function parseMouseEvent(data: string): MouseEvent | undefined {
 	if (wheel === 66) return { action: "wheel-left", x, y };
 	if (wheel === 67) return { action: "wheel-right", x, y };
 	if (match[4] === "m") return { action: "release", x, y };
+	if ((button & 32) !== 0) return { action: "move", x, y };
 	if ((button & 0x23) === 0) return { action: "press", x, y };
 	return undefined;
 }
@@ -750,6 +924,8 @@ function renderNumbered(
 	horizontalScroll: number,
 	highlightedSource: string | undefined,
 	theme: Theme,
+	commented: boolean,
+	hovered: boolean,
 ): string {
 	if (!line) return "";
 	const number =
@@ -759,19 +935,19 @@ function renderNumbered(
 	let marker = " ";
 	if (line.kind === "add") marker = "+";
 	else if (line.kind === "remove") marker = "-";
+	const commentMarker = commented
+		? theme.fg("accent", COMMENT_ICON)
+		: " ".repeat(visibleWidth(COMMENT_ICON));
+	const prefix = `${theme.fg("muted", number)} ${colorText(marker, line.kind, theme)}${commentMarker} `;
 	const source = cropHighlightedSource(
 		highlightedSource ?? colorText(line.text, line.kind, theme),
 		horizontalScroll,
-		Math.max(0, width - numberWidth - 3),
+		Math.max(0, width - visibleWidth(prefix)),
 	);
-	return colorLineBackground(
-		fit(
-			`${theme.fg("muted", number)} ${colorText(marker, line.kind, theme)} ${source}`,
-			width,
-		),
-		line.kind,
-		theme,
-	);
+	const value = fit(`${prefix}${source}`, width);
+	return hovered
+		? theme.bg("selectedBg", pad(value, width))
+		: colorLineBackground(value, line.kind, theme);
 }
 
 function showSplitMetadata(
