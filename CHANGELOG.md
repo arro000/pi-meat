@@ -4,6 +4,12 @@ All notable changes to pi-meat are documented here. Format follows [Keep a Chang
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-08-06
+
+### Fixed
+
+- Recover from malformed model tool-call arguments instead of aborting reading-diff generation.
+
 ## [0.3.0] - 2026-08-05
 
 ### Added
@@ -63,7 +69,8 @@ All notable changes to pi-meat are documented here. Format follows [Keep a Chang
 - Restricted cache directories/files to owner-only POSIX permissions.
 - Added strict bridge event validation, protocol negotiation, and terminal-text sanitization.
 
-[Unreleased]: https://github.com/arro000/pi-meat/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/arro000/pi-meat/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/arro000/pi-meat/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/arro000/pi-meat/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/arro000/pi-meat/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/arro000/pi-meat/compare/v0.1.0...v0.1.1

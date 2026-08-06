@@ -155,7 +155,7 @@ export function fromPiResponse(response: AssistantMessage): WireBlock[] {
 				type: "tool_use",
 				id: part.id,
 				tool_name: part.name,
-				tool_input: part.arguments,
+				tool_input: asObject(part.arguments),
 			});
 		}
 	}

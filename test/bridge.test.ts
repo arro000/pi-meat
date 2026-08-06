@@ -289,6 +289,39 @@ test("keeps repository read tools out of model requests", async () => {
 	}
 });
 
+test("recovers when a model tool call has malformed arguments", async () => {
+	const previousBridge = process.env.PI_MEAT_BRIDGE;
+	delete process.env.PI_MEAT_BRIDGE;
+	let turn = 0;
+	try {
+		const result = await runBridge({
+			diff: "diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -1 +1 @@\n-old\n+new\n",
+			onGenerate: async () => {
+				turn++;
+				if (turn === 1)
+					return {
+						...assistant,
+						content: [
+							{
+								type: "toolCall",
+								id: "malformed-1",
+								name: "preview_plan",
+								arguments: undefined as unknown as Record<string, unknown>,
+							},
+						],
+						stopReason: "toolUse",
+					};
+				return submissionAssistant;
+			},
+		});
+		assert.equal(turn, 2);
+		assert.equal(result.summary, "Changes value");
+	} finally {
+		if (previousBridge !== undefined)
+			process.env.PI_MEAT_BRIDGE = previousBridge;
+	}
+});
+
 test("does not write to bridge stdin after cancellation", async () => {
 	const directory = await mkdtemp(join(tmpdir(), "pi-meat-bridge-"));
 	const executable = join(directory, "fake-bridge.cjs");
