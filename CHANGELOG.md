@@ -4,6 +4,12 @@ All notable changes to pi-meat are documented here. Format follows [Keep a Chang
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-08-18
+
+### Fixed
+
+- Keep long file paths identifiable by showing their filename end in the sidebar and the full path above the diff.
+
 ## [0.3.1] - 2026-08-06
 
 ### Fixed
@@ -69,7 +75,8 @@ All notable changes to pi-meat are documented here. Format follows [Keep a Chang
 - Restricted cache directories/files to owner-only POSIX permissions.
 - Added strict bridge event validation, protocol negotiation, and terminal-text sanitization.
 
-[Unreleased]: https://github.com/arro000/pi-meat/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/arro000/pi-meat/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/arro000/pi-meat/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/arro000/pi-meat/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/arro000/pi-meat/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/arro000/pi-meat/compare/v0.1.1...v0.2.0
