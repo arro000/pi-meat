@@ -84,6 +84,31 @@ test("renders bounded side-by-side content with stable file sidebar", () => {
 	assert.ok(second.some((line) => line.includes("2/2 · src/b.ts")));
 });
 
+test("keeps the useful path tail in the sidebar and labels the full path", () => {
+	const longPath = "packages/application/src/features/review/long-file-name.ts";
+	const longPathDiff = diff.replaceAll("src/a.ts", longPath);
+	const viewer = new MeatDiffViewer({
+		theme,
+		summary: "Long path",
+		originalDiff: longPathDiff,
+		readingDiff: longPathDiff,
+		modelLabel: "provider/model",
+		viewportHeight: () => 10,
+		done: () => {},
+	});
+
+	const lines = viewer.render(140);
+	assert.ok(lines.some((line) => line.includes(`FILE  ${longPath}`)));
+	assert.ok(
+		lines.some(
+			(line) =>
+				line.includes("…") &&
+				line.includes("long-file-name.ts") &&
+				line.includes("+1 -2"),
+		),
+	);
+});
+
 test("shows Meat progress until the reading diff is ready", () => {
 	const viewer = new MeatDiffViewer({
 		theme,
@@ -201,7 +226,7 @@ test("highlights the code line under the mouse", () => {
 	});
 
 	viewer.render(98);
-	viewer.handleInput("\x1b[<35;10;6M");
+	viewer.handleInput("\x1b[<35;10;8M");
 	const hovered = viewer.render(98);
 	assert.ok(
 		hovered.some((line) => line.includes("[hover]") && line.includes("keep")),
@@ -247,7 +272,7 @@ test("selects sidebar files and scrolls diff with SGR mouse input", () => {
 		done: () => {},
 	});
 	viewer.render(120);
-	viewer.handleInput("\x1b[<0;2;8M");
+	viewer.handleInput("\x1b[<0;2;10M");
 	assert.ok(viewer.render(120).some((line) => line.includes("3/3 · src/c.ts")));
 	viewer.handleInput("\x1b[<65;80;8M");
 	const scrolled = viewer.render(120);
@@ -306,7 +331,7 @@ test("anchors clicks to the visible split line and edits comments in a dialog", 
 		},
 	});
 	viewer.render(98);
-	viewer.handleInput("\x1b[<0;10;6M");
+	viewer.handleInput("\x1b[<0;10;8M");
 	await new Promise((resolve) => setImmediate(resolve));
 	assert.equal(requests[0]?.anchor.line, 10);
 	assert.equal(requests[0]?.anchor.snippet, "keep");
@@ -323,12 +348,12 @@ test("anchors clicks to the visible split line and edits comments in a dialog", 
 			.some((line) => line.includes("💬") && line.includes("keep")),
 	);
 
-	viewer.handleInput("\x1b[<0;10;6M");
+	viewer.handleInput("\x1b[<0;10;8M");
 	await new Promise((resolve) => setImmediate(resolve));
 	assert.equal(requests[1]?.currentText, "Needs better handling");
 	assert.equal(viewer.getComments()[0]?.text, "Handle the error");
 
-	viewer.handleInput("\x1b[<0;10;6M");
+	viewer.handleInput("\x1b[<0;10;8M");
 	await new Promise((resolve) => setImmediate(resolve));
 	assert.equal(viewer.getComments().length, 0);
 });

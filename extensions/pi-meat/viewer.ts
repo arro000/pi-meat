@@ -77,7 +77,7 @@ export class MeatDiffViewer {
 	private lastBodyHeight = 8;
 	private lastContentWidth = 88;
 	private lastSidebarWidth = 0;
-	private lastBodyStartRow = 3;
+	private lastBodyStartRow = 5;
 	private hoverAnchor: CommentAnchor | undefined;
 	private pendingComment = false;
 	private comments: DiffComment[] = [];
@@ -216,7 +216,7 @@ export class MeatDiffViewer {
 		this.lastBodyHeight = bodyHeight;
 		this.lastContentWidth = contentWidth;
 		this.lastSidebarWidth = sidebarWidth;
-		this.lastBodyStartRow = 3 + (this.help ? 3 : 0);
+		this.lastBodyStartRow = 5 + (this.help ? 3 : 0);
 		this.horizontalScroll = clamp(
 			this.horizontalScroll,
 			0,
@@ -365,6 +365,23 @@ export class MeatDiffViewer {
 		if (this.reading) detail = `● ${this.summary || "Reading diff ready"}`;
 		else if (this.readingError)
 			detail = `× Reading diff failed: ${this.readingError}`;
+		const path = sanitizeTerminalText(
+			this.active.files[this.selectedFile]?.path ?? "No file selected",
+		);
+		const border = (left: string, fill: string, right: string) =>
+			fit(
+				theme.fg(
+					"borderMuted",
+					width > 1 ? `${left}${fill.repeat(width - 2)}${right}` : fill,
+				),
+				width,
+			);
+		const edge = theme.fg("borderMuted", "│");
+		const fileLabel = `${theme.fg("accent", theme.bold("FILE"))}  ${theme.fg("text", path)}`;
+		const pathLine =
+			width > 1
+				? `${edge}${pad(` ${fileLabel} `, width - 2)}${edge}`
+				: fit(fileLabel, width);
 		return [
 			fit(
 				`${theme.fg("accent", theme.bold("🥩 pi-meat"))}  ${reading}  ${original}  ${theme.fg("muted", layout)}`,
@@ -374,7 +391,9 @@ export class MeatDiffViewer {
 				`${theme.fg("text", sanitizeTerminalText(detail))} ${theme.fg("dim", `· ${sanitizeTerminalText(this.options.modelLabel)}`)}`,
 				width,
 			),
-			fit(theme.fg("borderMuted", "─".repeat(width)), width),
+			border("┌", "─", "┐"),
+			pathLine,
+			border("└", "─", "┘"),
 		];
 	}
 
@@ -438,7 +457,7 @@ export class MeatDiffViewer {
 			4,
 			width - visibleWidth(marker) - visibleWidth(counts) - 1,
 		);
-		const label = `${marker}${truncateToWidth(sanitizeTerminalText(file.path), pathWidth, "…")} ${counts}`;
+		const label = `${marker}${truncateStartToWidth(sanitizeTerminalText(file.path), pathWidth)} ${counts}`;
 		return fit(
 			selected
 				? theme.bg("selectedBg", theme.fg("text", label))
@@ -1220,6 +1239,14 @@ function cropHighlightedSource(
 ): string {
 	if (width <= 0) return "";
 	return sliceByColumn(value, offset, width, true);
+}
+
+function truncateStartToWidth(value: string, width: number): string {
+	const safeWidth = Math.max(0, width);
+	const valueWidth = visibleWidth(value);
+	if (valueWidth <= safeWidth) return value;
+	if (safeWidth <= 1) return fit("…", safeWidth);
+	return `…${sliceByColumn(value, valueWidth - safeWidth + 1, safeWidth - 1, true)}`;
 }
 
 function fit(value: string, width: number): string {
