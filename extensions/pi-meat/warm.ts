@@ -125,7 +125,12 @@ export class CommitWarmer {
 		if (!ctx.isIdle()) return;
 		try {
 			const settings = await loadMeatSettings();
-			if (!settings.backgroundPreprocess) return;
+			if (!settings.backgroundPreprocess) {
+				// Stay armed so the toggle takes effect without a restart, but back
+				// off instead of re-reading settings every poll interval.
+				this.growDelay();
+				return;
+			}
 			const revision = await headRevision(this.pi, ctx.cwd);
 			if (!revision || revision === this.lastSeenRevision) {
 				this.growDelay();

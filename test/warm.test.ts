@@ -227,8 +227,15 @@ test("does nothing while the setting is off", async () => {
 				"second",
 			);
 			warmer.arm(ctx);
+			const before = pollDelay(warmer);
 			await warmer.checkOnce();
 			assert.deepEqual(await cacheRoots(context.cache), []);
+			// The poll stays armed so a toggle takes effect live, but it must back
+			// off instead of re-reading settings every few seconds forever.
+			assert.ok(
+				pollDelay(warmer) > before,
+				"disabled pre-processing must back off",
+			);
 		} finally {
 			await warmer.dispose();
 		}
@@ -236,6 +243,10 @@ test("does nothing while the setting is off", async () => {
 		await context.restore();
 	}
 });
+
+function pollDelay(warmer: CommitWarmer): number {
+	return (warmer as unknown as { delay: number }).delay;
+}
 
 test("skips revisions that are already cached", async () => {
 	const context = await fixture();
