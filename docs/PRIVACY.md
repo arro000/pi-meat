@@ -11,6 +11,10 @@ Repository read/grep tools are disabled. pi-meat does not intentionally send unr
 
 Provider handling, retention, and training policies depend on model/provider configured in Pi. Review provider policy before processing sensitive code.
 
+### Background pre-processing
+
+Background pre-processing is opt-in and off by default. While it is enabled, a committed diff is sent to the configured model provider without a per-commit confirmation. Only committed revisions are pre-processed: staged and unstaged changes are never watched, because their content changes on every edit. Disable the toggle in `/meat-settings` to stop all automatic provider calls; Pi events and the `git rev-parse HEAD` poll stop doing work immediately.
+
 ## Data kept local
 
 Default cache: `~/.pi/agent/cache/pi-meat/`
@@ -22,7 +26,7 @@ Default cache: `~/.pi/agent/cache/pi-meat/`
 
 Default settings: `~/.pi/agent/pi-meat.json`
 
-- selected default model label, Meat thinking level, and startup mode;
+- selected default model label, Meat thinking level, startup mode, and the background pre-processing toggle;
 - no API key or provider credential.
 
 Cache is plaintext. On each run, pi-meat recursively tightens current and legacy cache trees to `0700` directories and `0600` files on POSIX systems. Disk encryption, backups, administrator access, malware, and custom cache locations remain outside pi-meat control.
@@ -33,7 +37,7 @@ Provider authentication is resolved and used in Pi process. Credentials are not 
 
 ## Retention and deletion
 
-Cache has no automatic expiry yet. Delete it manually:
+Cached entries are pruned to the 50 most recent after each background pre-processing run; a run in progress and its own entry are never pruned. Entries created without background pre-processing persist until pruned by a later run or deleted manually:
 
 ```bash
 rm -rf ~/.pi/agent/cache/pi-meat

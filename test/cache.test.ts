@@ -3,9 +3,11 @@ import {
 	chmod,
 	mkdir,
 	mkdtemp,
+	readdir,
 	rm,
 	stat,
 	symlink,
+	utimes,
 	writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -14,6 +16,7 @@ import test from "node:test";
 import {
 	artifactPaths,
 	persistArtifacts,
+	pruneCacheRoots,
 	readCache,
 	secureCacheTree,
 } from "../extensions/pi-meat/cache.ts";
@@ -50,6 +53,36 @@ test("persists cache with owner-only permissions", {
 			assert.equal(mode((await stat(file)).mode), 0o600);
 		const cached = await readCache(root);
 		assert.equal(cached?.result.summary, "summary");
+	} finally {
+		await rm(base, { recursive: true, force: true });
+	}
+});
+
+test("prunes the oldest cache roots and keeps preserved ones", async () => {
+	const base = await mkdtemp(join(tmpdir(), "pi-meat-cache-prune-"));
+	try {
+		// Distinct mtimes: creating roots in order is not enough on coarse clocks.
+		const roots = ["oldest", "older", "newer", "newest"];
+		for (const [index, name] of roots.entries()) {
+			await persistArtifacts(
+				artifactPaths(join(base, name), `generation-${index}`),
+				{
+					summary: name,
+					smartDiff: "reading",
+					inputTokens: 0,
+					outputTokens: 0,
+				},
+				"original",
+				{ source: "HEAD", model: "provider/model" },
+			);
+			await utimes(join(base, name), index + 1, index + 1);
+		}
+		const preserved = join(base, "oldest");
+		const removed = await pruneCacheRoots(base, 2, [preserved]);
+		assert.deepEqual(removed.sort(), [join(base, "older")]);
+		// A preserved root survives even when it falls outside the retention window.
+		const remaining = (await readdir(base)).sort();
+		assert.deepEqual(remaining, ["newer", "newest", "oldest"]);
 	} finally {
 		await rm(base, { recursive: true, force: true });
 	}
