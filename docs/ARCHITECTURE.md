@@ -27,9 +27,22 @@ Pi extension → pi-ai → configured provider
 
 Repository read and grep tools are disabled. The model receives the selected Git diff and abridgement conversation, not unrelated repository files.
 
+## Background pre-processing
+
+Optional and disabled by default. When enabled in `/meat-settings`, the extension pre-runs the same abridgement path for new commit revisions and publishes the artifact under the content-addressed key `/meat` will later look up.
+
+- `extensions/pi-meat/abridge.ts`: one shared pipeline (cache key, model auth, bridge run, persistence) used by both the command and the warmer, so a warmed artifact is always a cache hit.
+- `extensions/pi-meat/warm.ts`: detection and scheduling. Commit-creating commands are noticed from `tool_result` and `user_bash`; `agent_settled` covers agent-driven commits; a backed-off `git rev-parse HEAD` poll (`4s` growing to `30s`) covers commits made outside Pi.
+- Only immutable revisions are pre-processed. `staged`, `worktree`, and `all` selectors are never watched.
+- Work is skipped while Pi is busy (`ctx.isIdle()`), coalesced to the newest revision, aborted on session shutdown, and yielded to an explicit `/meat` run.
+- A dedicated status key (`pi-meat-warm`) keeps progress from colliding with the `/meat` loader and the settings picker.
+
 ## Components
 
-- `extensions/pi-meat/index.ts`: command lifecycle, Git selection, model resolution, cache, viewer and review handoff.
+- `extensions/pi-meat/index.ts`: command lifecycle, Git selection, model resolution, viewer and review handoff.
+- `extensions/pi-meat/abridge.ts`: shared cache key, model authorization, bridge invocation, and artifact publication.
+- `extensions/pi-meat/warm.ts`: background commit detection, scheduling, and cache pruning trigger.
+- `extensions/pi-meat/git.ts`: repository root, diff selection, and revision resolution.
 - `extensions/pi-meat/bridge.ts`: helper process lifecycle, environment isolation, JSONL transport, cancellation and validation.
 - `extensions/pi-meat/protocol.ts`: versioned wire types and Pi/Meat message conversion.
 - `extensions/pi-meat/viewer.ts`: responsive syntax-aware TUI viewer and session-scoped line comments.

@@ -28,6 +28,8 @@ export interface MeatSettings {
 	defaultModel?: string;
 	thinkingLevel?: ModelThinkingLevel;
 	startupMode?: MeatStartupMode;
+	/** Opt-in background pre-processing for new commits. Spends subscription tokens. */
+	backgroundPreprocess?: boolean;
 }
 
 const THINKING_LEVELS: ModelThinkingLevel[] = [
@@ -87,10 +89,20 @@ export async function loadMeatSettings(): Promise<MeatSettings> {
 		throw new Error(
 			"Invalid pi-meat settings: startupMode must be default or on-demand",
 		);
+	if (
+		value.backgroundPreprocess !== undefined &&
+		typeof value.backgroundPreprocess !== "boolean"
+	)
+		throw new Error(
+			"Invalid pi-meat settings: backgroundPreprocess must be a boolean",
+		);
 	return {
 		...(value.defaultModel ? { defaultModel: value.defaultModel } : {}),
 		...(value.thinkingLevel ? { thinkingLevel: value.thinkingLevel } : {}),
 		...(value.startupMode ? { startupMode: value.startupMode } : {}),
+		...(value.backgroundPreprocess === true
+			? { backgroundPreprocess: true }
+			: {}),
 	};
 }
 
@@ -258,6 +270,14 @@ export async function openMeatSettings(ctx: ExtensionContext): Promise<void> {
 					return picker;
 				},
 			},
+			{
+				id: "backgroundPreprocess",
+				label: "Background pre-processing",
+				currentValue: settings.backgroundPreprocess ? "on" : "off",
+				description:
+					"Pre-build reading diffs for new commits. Sends diffs to your model provider without further prompting.",
+				values: ["off", "on"],
+			},
 		];
 		const list = new SettingsList(
 			items,
@@ -269,11 +289,14 @@ export async function openMeatSettings(ctx: ExtensionContext): Promise<void> {
 					current = value;
 				} else if (id === "thinkingLevel")
 					settings.thinkingLevel = value as ModelThinkingLevel;
+				else if (id === "backgroundPreprocess")
+					settings.backgroundPreprocess = value === "on";
 				else settings.startupMode = value as MeatStartupMode;
 				const snapshot = { ...settings };
 				let name = "startup";
 				if (id === "defaultModel") name = "model";
 				else if (id === "thinkingLevel") name = "thinking";
+				else if (id === "backgroundPreprocess") name = "background";
 				const status = `${name}: ${value}`;
 				pendingSave = pendingSave
 					.then(() => saveMeatSettings(snapshot))

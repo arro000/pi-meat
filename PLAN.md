@@ -23,6 +23,7 @@ pi-meat turns Meat's abridgement engine into a first-class Pi reading experience
 - [x] Interactive persistent model picker
 - [ ] Interactive source picker
 - [x] Responsive side-by-side mode with changed-file sidebar
+- [x] Optional background pre-processing for new commits
 - [ ] Search and hunk-level review handoff
 - [x] Open-source governance, security/privacy docs, and npm release automation
 - [x] Helper environment isolation, strict protocol validation, and private cache permissions
@@ -33,6 +34,7 @@ pi-meat turns Meat's abridgement engine into a first-class Pi reading experience
 
 - TypeScript compiles in strict mode.
 - Go bridge tests/build pass against the pinned Meat module.
+- Background pre-processing writes only the cache key `/meat` reads back, and never runs during an active turn.
 - Diff parser tests cover commit preambles, files, hunks, additions, and deletions.
 - A local smoke test can run the bridge with a deterministic fake JSONL model.
 - No provider credential is serialized into bridge requests, cache files, or UI artifacts.

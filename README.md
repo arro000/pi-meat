@@ -126,13 +126,17 @@ Startup mode is `default` unless changed:
 
 The viewer always shows Meat's state directly below the Reading/Original choices. When the reading diff is ready, `✨` appears beside Reading. Cached reading diffs are ready immediately and do not require another run.
 
+The same dialog exposes **Background pre-processing**. When it is on, pi-meat watches for new commits and pre-builds the reading diff in the background, so `/meat HEAD` opens from the cache without waiting for the model. Detection uses Pi events for commits made by the agent or by `!` commands, plus a backed-off `git rev-parse HEAD` poll for commits made outside Pi. Only committed revisions are pre-processed, never staged or unstaged changes.
+
+Background pre-processing is **off by default** because it sends committed diffs to your model provider and spends subscription tokens without a per-commit prompt. It is skipped while Pi is working on a turn, and it yields to an explicit `/meat` run.
+
 Settings are stored in `~/.pi/agent/pi-meat.json`. Cache entries are separated by model and effective thinking level. Set `PI_MEAT_SETTINGS` to use another path.
 
 ## Local data and privacy
 
 The selected diff is sent to the model provider configured in Pi. pi-meat does not enable repository read or grep tools for abridgement, and it adds no independent telemetry.
 
-Original and reading diffs are cached as plaintext under `~/.pi/agent/cache/pi-meat/` with no automatic expiry. Delete the default cache with:
+Original and reading diffs are cached as plaintext under `~/.pi/agent/cache/pi-meat/` with no automatic expiry. The cache keeps the 50 most recent entries and deletes older ones after each background pre-processing run. Delete the whole cache with:
 
 ```bash
 rm -rf ~/.pi/agent/cache/pi-meat
@@ -150,6 +154,7 @@ Set `PI_MEAT_CACHE` to choose another cache directory. See [privacy and data flo
 | Configured model is unavailable | Run `/meat-settings` and select an authenticated model. |
 | Bridge startup or Go module error | Confirm Go 1.24.13+ is installed and can download the pinned modules. The first run may be slower. |
 | Stale reading diff | Run the same selector with `--fresh`. |
+| Background pre-processing does not trigger | Check that the toggle is on in `/meat-settings`, that a model is available, and that Pi is idle. It never runs outside a Git repository. |
 
 For unresolved problems, follow the [support guide](SUPPORT.md).
 

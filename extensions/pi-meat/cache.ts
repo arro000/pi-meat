@@ -6,6 +6,7 @@ import {
 	readdir,
 	readFile,
 	rename,
+	rm,
 	writeFile,
 } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -110,6 +111,51 @@ async function atomicWrite(path: string, content: string): Promise<void> {
 async function secureDirectory(path: string): Promise<void> {
 	await mkdir(path, { recursive: true, mode: 0o700 });
 	await chmod(path, 0o700);
+}
+
+/**
+ * Bounds the content-addressed cache. Every distinct diff owns a key
+ * directory, so background pre-processing would otherwise grow the cache
+ * forever. Keeps the newest `keep` roots and never removes a preserved root.
+ * Returns the removed paths.
+ */
+export async function pruneCacheRoots(
+	baseRoot: string,
+	keep: number,
+	preserve: Iterable<string> = [],
+): Promise<string[]> {
+	let entries;
+	try {
+		entries = await readdir(baseRoot, { withFileTypes: true });
+	} catch {
+		return [];
+	}
+	const candidates: { path: string; mtime: number }[] = [];
+	for (const entry of entries) {
+		// withFileTypes reports symlinks as non-directories, so they are skipped.
+		if (!entry.isDirectory()) continue;
+		const path = join(baseRoot, entry.name);
+		try {
+			const stats = await lstat(path);
+			candidates.push({ path, mtime: stats.mtimeMs });
+		} catch {
+			// Entry disappeared between readdir and lstat.
+		}
+	}
+	candidates.sort((left, right) => right.mtime - left.mtime);
+	const limit = Math.max(1, Math.trunc(keep));
+	const protectedPaths = new Set(preserve);
+	const removed: string[] = [];
+	for (const [index, candidate] of candidates.entries()) {
+		if (index < limit || protectedPaths.has(candidate.path)) continue;
+		try {
+			await rm(candidate.path, { recursive: true, force: true, maxRetries: 2 });
+			removed.push(candidate.path);
+		} catch {
+			// The next run retries pruning; cleanup never fails a warm.
+		}
+	}
+	return removed;
 }
 
 export async function secureCacheTree(path: string): Promise<void> {

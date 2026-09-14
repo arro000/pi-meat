@@ -1,28 +1,16 @@
-import { createHash, randomUUID } from "node:crypto";
-import { dirname } from "node:path";
 import { clampThinkingLevel } from "@earendil-works/pi-ai";
-import { completeSimple } from "@earendil-works/pi-ai/compat";
 import type {
 	ExtensionAPI,
 	ExtensionCommandContext,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
+import { isBashToolResult } from "@earendil-works/pi-coding-agent";
 import { Text, type Terminal } from "@earendil-works/pi-tui";
-import { runBridge } from "./bridge.ts";
-import {
-	artifactPaths,
-	artifactRoot,
-	persistArtifacts,
-	readCache,
-	secureCacheTree,
-} from "./cache.ts";
-import {
-	toPiContext,
-	type GenerateRequest,
-	PROTOCOL_VERSION,
-} from "./protocol.ts";
+import { abridgeTarget, generateAbridged, readAbridged } from "./abridge.ts";
+import { gitRoot, readGitDiff } from "./git.ts";
 import { sanitizeTerminalText } from "./terminal.ts";
 import { CommentDialog, MeatDiffViewer, type ViewerAction } from "./viewer.ts";
+import { CommitWarmer } from "./warm.ts";
 import {
 	loadMeatSettings,
 	openMeatSettings,
@@ -30,7 +18,6 @@ import {
 } from "./settings.ts";
 
 const BRAND = "🥩 pi-meat";
-const CACHE_VERSION = `bridge-${PROTOCOL_VERSION}-diff-only-v2`;
 
 interface ArtifactEntry {
 	summary: string;
@@ -104,6 +91,20 @@ async function chooseMeatAction(
 }
 
 export default function piMeat(pi: ExtensionAPI) {
+	const warmer = new CommitWarmer(pi);
+
+	pi.on("session_start", (_event, ctx) => warmer.arm(ctx));
+	pi.on("session_shutdown", () => warmer.dispose());
+	pi.on("agent_settled", (_event, ctx) => warmer.noteSettled(ctx));
+
+	pi.on("tool_result", (event, ctx) => {
+		if (!isBashToolResult(event)) return;
+		const command = event.input.command;
+		if (typeof command === "string") warmer.noteCommand(ctx, command);
+	});
+
+	pi.on("user_bash", (event, ctx) => warmer.noteCommand(ctx, event.command));
+
 	pi.registerEntryRenderer("pi-meat-result", (entry, _options, theme) => {
 		const data = entry.data as ArtifactEntry;
 		return new Text(
@@ -151,7 +152,9 @@ export default function piMeat(pi: ExtensionAPI) {
 					);
 					return;
 				}
-				const repoRoot = await gitRoot(pi, ctx);
+				// An explicit run owns the bridge; background pre-processing yields.
+				warmer.cancel();
+				const repoRoot = await gitRoot(pi, ctx.cwd);
 				const { diff, source } = await readGitDiff(
 					pi,
 					repoRoot,
@@ -159,26 +162,15 @@ export default function piMeat(pi: ExtensionAPI) {
 				);
 				if (!diff.trim()) throw new Error(`No changes found for ${source}`);
 
-				const modelLabel = `${model.provider}/${model.id}`;
 				const thinkingLevel = clampThinkingLevel(
 					model,
 					settings.thinkingLevel ?? ctx.thinkingLevel ?? "medium",
 				);
-				const meatModelLabel = `${modelLabel} · thinking:${thinkingLevel}`;
-				const key = createHash("sha256")
-					.update(CACHE_VERSION)
-					.update("\0")
-					.update(modelLabel)
-					.update("\0")
-					.update(thinkingLevel)
-					.update("\0")
-					.update(diff)
-					.digest("hex");
-				const cacheRoot = artifactRoot(key);
-				await secureCacheTree(dirname(cacheRoot));
+				const target = abridgeTarget(diff, model, thinkingLevel);
+				const meatModelLabel = target.label;
 				const cacheEntry = parsedArgs.fresh
 					? undefined
-					: await readCache(cacheRoot);
+					: await readAbridged(target);
 				let result = cacheEntry?.result;
 				let paths = cacheEntry?.paths;
 				const cached = result !== undefined;
@@ -229,11 +221,12 @@ export default function piMeat(pi: ExtensionAPI) {
 							createdViewer.setProgress("Starting Meat…");
 							ctx.ui.setStatus("pi-meat", "🥩 Starting Meat…");
 							computation = (async () => {
-								const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
-								if (!auth.ok) throw new Error(auth.error);
-								const nestedSessionId = randomUUID();
-								const computed = await runBridge({
+								const computed = await generateAbridged({
+									ctx,
+									model,
+									target,
 									diff,
+									source,
 									signal: controller.signal,
 									onProgress: (message) => {
 										createdViewer.setProgress(message);
@@ -243,42 +236,13 @@ export default function piMeat(pi: ExtensionAPI) {
 										);
 										tui.requestRender();
 									},
-									onGenerate: async (request: GenerateRequest) => {
-										const meatContext = toPiContext(request);
-										const response = await completeSimple(
-											model,
-											{ systemPrompt: request.system, ...meatContext },
-											{
-												apiKey: auth.apiKey,
-												headers: auth.headers,
-												env: auth.env,
-												signal: controller.signal,
-												reasoning:
-													thinkingLevel === "off" ? undefined : thinkingLevel,
-												cacheRetention: "short",
-												sessionId: nestedSessionId,
-											},
-										);
-										if (response.stopReason === "error")
-											throw new Error(
-												response.errorMessage ?? "Pi model call failed",
-											);
-										if (response.stopReason === "aborted")
-											throw new Error("Meat model call cancelled");
-										return response;
-									},
 								});
-								const computedPaths = artifactPaths(cacheRoot, randomUUID());
-								await persistArtifacts(computedPaths, computed, diff, {
-									source,
-									model: meatModelLabel,
-								});
-								result = computed;
-								paths = computedPaths;
+								result = computed.result;
+								paths = computed.paths;
 								if (!controller.signal.aborted) {
 									createdViewer.setReading(
-										computed.smartDiff,
-										computed.summary,
+										computed.result.smartDiff,
+										computed.result.summary,
 									);
 									ctx.ui.setStatus("pi-meat", "🥩 Reading diff ready");
 									tui.requestRender();
@@ -405,50 +369,6 @@ async function openMeatSettingsSafely(ctx: ExtensionContext): Promise<void> {
 			"error",
 		);
 	}
-}
-
-async function gitRoot(
-	pi: ExtensionAPI,
-	ctx: ExtensionCommandContext,
-): Promise<string> {
-	const result = await pi.exec("git", ["rev-parse", "--show-toplevel"], {
-		cwd: ctx.cwd,
-	});
-	if (result.code !== 0)
-		throw new Error("pi-meat must run inside a Git repository");
-	return result.stdout.trim();
-}
-
-async function readGitDiff(
-	pi: ExtensionAPI,
-	cwd: string,
-	source: string,
-): Promise<{ diff: string; source: string }> {
-	if (source.startsWith("-"))
-		throw new Error("Git source cannot start with '-'");
-	let args: string[];
-	if (source === "staged")
-		args = ["diff", "--staged", "--no-ext-diff", "--no-color"];
-	else if (source === "worktree")
-		args = ["diff", "--no-ext-diff", "--no-color"];
-	else if (source === "all")
-		args = ["diff", "HEAD", "--no-ext-diff", "--no-color"];
-	else if (source.includes(".."))
-		args = ["diff", "--no-ext-diff", "--no-color", source];
-	else
-		args = [
-			"show",
-			"--format=fuller",
-			"-m",
-			"--first-parent",
-			"--no-ext-diff",
-			"--no-color",
-			source,
-		];
-	const result = await pi.exec("git", args, { cwd });
-	if (result.code !== 0)
-		throw new Error(result.stderr.trim() || `git ${args.join(" ")} failed`);
-	return { diff: result.stdout, source };
 }
 
 function parseArgs(raw: string): { source: string; fresh: boolean } {

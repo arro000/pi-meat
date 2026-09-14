@@ -4,6 +4,16 @@ All notable changes to pi-meat are documented here. Format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Added
+
+- Optional background pre-processing for new commits: committed revisions are pre-built into the reading-diff cache so `/meat HEAD` opens without waiting for the model.
+- `backgroundPreprocess` setting in `/meat-settings`, off by default, with progress shown through a dedicated status key.
+
+### Changed
+
+- Shared `abridge.ts` pipeline for cache key, model authorization, bridge invocation, and artifact publication, used by both `/meat` and background pre-processing.
+- Cached entries are pruned to the 50 most recent after each background pre-processing run.
+
 ## [0.3.2] - 2026-08-18
 
 ### Fixed
