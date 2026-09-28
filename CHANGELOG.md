@@ -4,6 +4,8 @@ All notable changes to pi-meat are documented here. Format follows [Keep a Chang
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-09-28
+
 ### Added
 
 - Optional background pre-processing for new commits: committed revisions are pre-built into the reading-diff cache so `/meat HEAD` opens without waiting for the model.
@@ -13,6 +15,8 @@ All notable changes to pi-meat are documented here. Format follows [Keep a Chang
 
 ### Changed
 
+- Shared `abridge.ts` pipeline for cache key, model authorization, bridge invocation, and artifact publication, used by both `/meat` and background pre-processing.
+- Cached entries are pruned to the 50 most recent after each background pre-processing run.
 - Comments store the exact selected text, which can span a line fragment or several lines, and are anchored on the first selected line.
 - `Esc` clears an active selection before it closes the viewer.
 - The footer always advertises `drag select · right-click comment`, and the help panel lists the mouse gestures.
@@ -20,8 +24,6 @@ All notable changes to pi-meat are documented here. Format follows [Keep a Chang
 ### Fixed
 
 - Replay Pi's provider session-attribution headers on nested Meat calls, and reuse Pi's session id, so opencode-hosted models no longer fail with `MissingSessionID`.
-- Shared `abridge.ts` pipeline for cache key, model authorization, bridge invocation, and artifact publication, used by both `/meat` and background pre-processing.
-- Cached entries are pruned to the 50 most recent after each background pre-processing run.
 
 ## [0.3.2] - 2026-08-18
 
@@ -94,7 +96,8 @@ All notable changes to pi-meat are documented here. Format follows [Keep a Chang
 - Restricted cache directories/files to owner-only POSIX permissions.
 - Added strict bridge event validation, protocol negotiation, and terminal-text sanitization.
 
-[Unreleased]: https://github.com/arro000/pi-meat/compare/v0.3.2...HEAD
+[Unreleased]: https://github.com/arro000/pi-meat/compare/v0.3.3...HEAD
+[0.3.3]: https://github.com/arro000/pi-meat/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/arro000/pi-meat/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/arro000/pi-meat/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/arro000/pi-meat/compare/v0.2.0...v0.3.0
