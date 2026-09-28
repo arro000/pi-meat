@@ -35,6 +35,8 @@ Cache is plaintext. On each run, pi-meat recursively tightens current and legacy
 
 Provider authentication is resolved and used in Pi process. Credentials are not intentionally serialized into JSONL messages, cache, or helper environment. Helper receives allowlisted runtime variables only; token/API-key/cloud credential variables are excluded. Helper remains trusted, unsandboxed code with same OS user permissions.
 
+Abridgement requests are sent to the provider with Pi's session id in the session-attribution headers that Pi itself uses (`x-opencode-session` and `x-opencode-client` for opencode-hosted models). That identifier is a session id, not a credential, and is not written to the cache or passed to the helper.
+
 ## Retention and deletion
 
 Cached entries are pruned to the 50 most recent after each background pre-processing run; a run in progress and its own entry are never pruned. Entries created without background pre-processing persist until pruned by a later run or deleted manually:

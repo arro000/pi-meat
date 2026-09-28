@@ -23,9 +23,12 @@ Pi extension → pi-ai → configured provider
 4. For each `meat.Model.Generate` call, the helper sends provider-neutral messages and tools over the versioned JSONL pipe.
 5. The extension performs the request through `pi-ai` in the Pi process, then returns the assistant response to Meat. Full provider response state stays in that model conversation.
 6. Meat handles validation, chunking, folds, and elisions. The extension stores the original and reading diffs, updates the open viewer in place, and marks Reading with `✨`.
-7. The viewer marks commented files and lines, and opens an overlaid dialog to inspect or edit the selected comment. Each comment is anchored to file, old/new side, line, and code snippet. On review, the extension appends them to Pi's user message; the original diff remains immutable.
+7. The viewer marks commented files and lines, and opens an overlaid dialog to inspect or edit the selected comment. Each comment is anchored to file, old/new side, line, and code snippet. A comment created from a text selection stores the exact selected text. On review, the extension appends them to Pi's user message; the original diff remains immutable.
+8. If generation fails, the viewer keeps the original diff and offers a restart (`Enter` or `R`) that reruns the same revision, model, and thinking level.
 
 Repository read and grep tools are disabled. The model receives the selected Git diff and abridgement conversation, not unrelated repository files.
+
+Because abridgement calls the provider directly instead of going through Pi's request pipeline, it replays the provider attribution headers that pipeline adds, including opencode's `x-opencode-session` and `x-opencode-client` pair, and reuses Pi's session id for attribution and session-affinity caching.
 
 ## Background pre-processing
 
@@ -40,7 +43,8 @@ Optional and disabled by default. When enabled in `/meat-settings`, the extensio
 ## Components
 
 - `extensions/pi-meat/index.ts`: command lifecycle, Git selection, model resolution, viewer and review handoff.
-- `extensions/pi-meat/abridge.ts`: shared cache key, model authorization, bridge invocation, and artifact publication.
+- `extensions/pi-meat/abridge.ts`: shared cache key, model authorization, attribution headers, bridge invocation, and artifact publication.
+- `extensions/pi-meat/attribution.ts`: provider session-attribution headers replayed for direct provider calls.
 - `extensions/pi-meat/warm.ts`: background commit detection, scheduling, and cache pruning trigger.
 - `extensions/pi-meat/git.ts`: repository root, diff selection, and revision resolution.
 - `extensions/pi-meat/bridge.ts`: helper process lifecycle, environment isolation, JSONL transport, cancellation and validation.

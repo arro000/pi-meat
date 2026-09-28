@@ -177,6 +177,7 @@ export default function piMeat(pi: ExtensionAPI) {
 
 				let viewer: MeatDiffViewer | undefined;
 				let computation: Promise<void> | undefined;
+				let generationFailed = false;
 				const controller = new AbortController();
 				const action = await ctx.ui.custom<ViewerAction>(
 					(tui, theme, _keybindings, done) => {
@@ -217,7 +218,8 @@ export default function piMeat(pi: ExtensionAPI) {
 						viewer = createdViewer;
 
 						startComputation = () => {
-							if (result || computation) return;
+							if (result || (computation && !generationFailed)) return;
+							generationFailed = false;
 							createdViewer.setProgress("Starting Meat…");
 							ctx.ui.setStatus("pi-meat", "🥩 Starting Meat…");
 							computation = (async () => {
@@ -249,6 +251,7 @@ export default function piMeat(pi: ExtensionAPI) {
 								}
 							})().catch((error) => {
 								if (controller.signal.aborted) return;
+								generationFailed = true;
 								createdViewer.setReadingError(
 									error instanceof Error ? error.message : String(error),
 								);
@@ -307,7 +310,7 @@ export default function piMeat(pi: ExtensionAPI) {
 						? `\n\nUser comments to address:\n${comments
 								.map(
 									(comment, index) =>
-										`${index + 1}. ${comment.filePath}:${comment.line} (${comment.side})\n   Code: ${comment.snippet}\n   Comment: ${comment.text}`,
+										`${index + 1}. ${comment.filePath}:${comment.line} (${comment.side})\n   Code: ${indentLines(comment.snippet)}\n   Comment: ${indentLines(comment.text)}`,
 								)
 								.join("\n")}`
 						: "";
@@ -340,6 +343,11 @@ export default function piMeat(pi: ExtensionAPI) {
 			await openMeatSettingsSafely(ctx);
 		},
 	});
+}
+
+/** Keeps multi-line comment text aligned inside the numbered review list. */
+function indentLines(value: string): string {
+	return value.replaceAll("\n", "\n   ");
 }
 
 function startMouseReporting(terminal: Terminal): () => void {

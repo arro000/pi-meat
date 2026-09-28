@@ -8,9 +8,18 @@ All notable changes to pi-meat are documented here. Format follows [Keep a Chang
 
 - Optional background pre-processing for new commits: committed revisions are pre-built into the reading-diff cache so `/meat HEAD` opens without waiting for the model.
 - `backgroundPreprocess` setting in `/meat-settings`, off by default, with progress shown through a dedicated status key.
+- Retry a failed reading diff from the viewer: `Enter` or `R` restarts Meat for the same revision, model, and thinking level without reopening `/meat`.
+- Mouse text selection in the viewer: hold the left button and drag to select diff text, then right-click to comment the selection. A right-click without a selection comments the line under the cursor.
 
 ### Changed
 
+- Comments store the exact selected text, which can span a line fragment or several lines, and are anchored on the first selected line.
+- `Esc` clears an active selection before it closes the viewer.
+- The footer always advertises `drag select · right-click comment`, and the help panel lists the mouse gestures.
+
+### Fixed
+
+- Replay Pi's provider session-attribution headers on nested Meat calls, and reuse Pi's session id, so opencode-hosted models no longer fail with `MissingSessionID`.
 - Shared `abridge.ts` pipeline for cache key, model authorization, bridge invocation, and artifact publication, used by both `/meat` and background pre-processing.
 - Cached entries are pruned to the 50 most recent after each background pre-processing run.
 

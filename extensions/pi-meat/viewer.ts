@@ -30,6 +30,12 @@ export type ViewerAction = "close" | "review";
 type ViewMode = "reading" | "original";
 type LayoutMode = "split" | "unified";
 const COMMENT_ICON = "💬";
+/** Help panel rows; the body viewport shrinks by this many lines while open. */
+const HELP_LINES = 5;
+/** Non-obvious mouse gestures, always shown in the footer. */
+const FOOTER_MOUSE = "drag select · right-click comment";
+/** Keyboard controls, shown when the terminal is wide enough. */
+const FOOTER_KEYS = " · j/k ↑/↓ · h/l ←/→ horizontal · r review · ? help";
 
 export interface DiffComment {
 	id: string;
@@ -45,6 +51,35 @@ export interface CommentAnchor {
 	side: "old" | "new";
 	line: number;
 	snippet: string;
+}
+
+type DiffSide = "old" | "new";
+
+/** A resolved mouse position inside the visible diff content. */
+interface DiffPoint {
+	side: DiffSide;
+	line: number;
+	/** Raw source text of the line, without the diff marker. */
+	text: string;
+	/** 0-based source column in terminal cells, before horizontal cropping. */
+	column: number;
+}
+
+interface SelectionCell {
+	side: DiffSide;
+	line: number;
+	text: string;
+}
+
+/**
+ * Text selected with the left mouse button. Cells are stored in display order;
+ * the column pair trims the first and last cell so a selection can start and
+ * end mid-line.
+ */
+interface TextSelection {
+	cells: SelectionCell[];
+	startColumn: number;
+	endColumn: number;
 }
 
 export interface MeatDiffViewerOptions {
@@ -79,6 +114,8 @@ export class MeatDiffViewer {
 	private lastSidebarWidth = 0;
 	private lastBodyStartRow = 5;
 	private hoverAnchor: CommentAnchor | undefined;
+	private selection: TextSelection | undefined;
+	private dragStart: DiffPoint | undefined;
 	private pendingComment = false;
 	private comments: DiffComment[] = [];
 	private reading: ParsedDiff | undefined;
@@ -123,18 +160,50 @@ export class MeatDiffViewer {
 		if (!this.reading) this.readingError = message;
 	}
 
+	/** True while a failed reading diff can be requested again. */
+	private get canRestart(): boolean {
+		return (
+			!this.reading &&
+			this.readingError !== undefined &&
+			this.options.startReading !== undefined
+		);
+	}
+
+	/** Clears a failed reading diff and asks the host to generate it again. */
+	private restartReading(): void {
+		this.readingError = undefined;
+		this.progressMessage = "Starting Meat…";
+		this.readingStarted = true;
+		this.mode = "reading";
+		this.options.startReading?.();
+	}
+
 	handleInput(data: string): void {
 		const mouse = parseMouseEvent(data);
 		if (mouse) {
 			this.handleMouse(mouse);
 			return;
 		}
-		if (matchesKey(data, Key.escape) || data === "q") {
+		if (matchesKey(data, Key.escape)) {
+			// A live text selection is cancelled first, so Esc never closes the
+			// viewer while the user is still working with a selection.
+			if (this.selection) {
+				this.clearSelection();
+				return;
+			}
+			this.options.done("close");
+			return;
+		}
+		if (data === "q") {
 			this.options.done("close");
 			return;
 		}
 		if (data === "r") {
 			this.options.done("review");
+			return;
+		}
+		if (data === "R" && this.canRestart) {
+			this.restartReading();
 			return;
 		}
 		if (data === "c") {
@@ -149,17 +218,21 @@ export class MeatDiffViewer {
 			this.layout = this.layout === "split" ? "unified" : "split";
 			this.scroll = 0;
 			this.horizontalScroll = 0;
+			this.clearSelection();
 			return;
 		}
 		if (matchesKey(data, Key.tab)) {
 			this.toggleMode();
 			return;
 		}
+		if (matchesKey(data, Key.enter) && this.canRestart) {
+			this.restartReading();
+			return;
+		}
 		if (
 			matchesKey(data, Key.enter) &&
 			this.mode === "reading" &&
 			!this.reading &&
-			!this.readingError &&
 			!this.readingStarted
 		) {
 			this.readingStarted = true;
@@ -208,15 +281,16 @@ export class MeatDiffViewer {
 		);
 		const effectiveLayout: LayoutMode =
 			this.layout === "split" && contentWidth >= 88 ? "split" : "unified";
+		const heightOffset = this.help ? HELP_LINES : 0;
 		const bodyHeight = Math.max(
 			5,
-			this.options.viewportHeight() - (this.help ? 3 : 0),
+			this.options.viewportHeight() - heightOffset,
 		);
 		this.lastLayout = effectiveLayout;
 		this.lastBodyHeight = bodyHeight;
 		this.lastContentWidth = contentWidth;
 		this.lastSidebarWidth = sidebarWidth;
-		this.lastBodyStartRow = 5 + (this.help ? 3 : 0);
+		this.lastBodyStartRow = 5 + heightOffset;
 		this.horizontalScroll = clamp(
 			this.horizontalScroll,
 			0,
@@ -266,19 +340,40 @@ export class MeatDiffViewer {
 			const noun = this.comments.length === 1 ? "comment" : "comments";
 			commentCount = ` · ${this.comments.length} ${noun}`;
 		}
+		const restartHint = this.canRestart ? " · Enter/R restart Meat" : "";
+		const selectionHint = this.selection
+			? ` · ${this.selection.cells.length === 1 ? "1 line" : `${this.selection.cells.length} lines`} selected`
+			: "";
 		return [
 			fit(
-				`${theme.fg("accent", position)} ${theme.fg("dim", `· line ${this.scroll + 1}/${Math.max(1, this.contentLength)} · col ${this.horizontalScroll + 1}-${Math.max(this.horizontalScroll + 1, columnEnd)}/${sourceLength}`)}`,
+				`${theme.fg("accent", position)} ${theme.fg("dim", `· line ${this.scroll + 1}/${Math.max(1, this.contentLength)} · col ${this.horizontalScroll + 1}-${Math.max(this.horizontalScroll + 1, columnEnd)}/${sourceLength}`)}` +
+					(selectionHint ? theme.fg("accent", selectionHint) : ""),
 				width,
 			),
 			fit(
-				theme.fg(
-					"dim",
-					`j/k ↑/↓ vertical · h/l ←/→ horizontal · c comment · r review · ? help${commentCount}`,
-				),
+				theme.fg("dim", this.controlsHint([commentCount, restartHint], width)),
 				width,
 			),
 		];
+	}
+
+	/**
+	 * Footer controls. The mouse hint always wins because the drag and
+	 * right-click gestures are not discoverable from keyboard hints alone;
+	 * keyboard controls and state counters are appended only while they fit.
+	 */
+	private controlsHint(extras: string[], width: number): string {
+		let hint =
+			visibleWidth(FOOTER_MOUSE + FOOTER_KEYS) <= width
+				? FOOTER_MOUSE + FOOTER_KEYS
+				: FOOTER_MOUSE;
+		for (const extra of extras) {
+			if (!extra) continue;
+			const candidate = `${hint}${extra}`;
+			if (visibleWidth(candidate) > width) break;
+			hint = candidate;
+		}
+		return hint;
 	}
 
 	invalidate(): void {}
@@ -408,6 +503,12 @@ export class MeatDiffViewer {
 			muted(
 				"Space fold file · c comment on line · r review with Pi · ? help · q/Esc close",
 			),
+			muted(
+				"Mouse: hold left and drag to select diff text · right-click comments the selection, or the line under the cursor",
+			),
+			muted(
+				"After a failure: Enter or R restarts Meat and rebuilds the reading diff",
+			),
 		];
 	}
 
@@ -487,6 +588,12 @@ export class MeatDiffViewer {
 							"muted",
 							sanitizeTerminalText(this.readingError),
 						),
+						this.options.theme.fg(
+							"accent",
+							this.canRestart
+								? "Press Enter (or R) to restart Meat and retry the analysis"
+								: "Close the viewer and run /meat again",
+						),
 					]
 				: [
 						this.options.theme.fg("accent", "Meat is processing…"),
@@ -528,6 +635,8 @@ export class MeatDiffViewer {
 			);
 			const oldLine = this.lineNumberForUnified(lines, index, "old");
 			const newLine = this.lineNumberForUnified(lines, index, "new");
+			const side: DiffSide = line.kind === "remove" ? "old" : "new";
+			const selectedLine = side === "old" ? oldLine : newLine;
 			const commented =
 				(oldLine !== undefined && this.hasComment("old", oldLine)) ||
 				(newLine !== undefined && this.hasComment("new", newLine));
@@ -538,12 +647,24 @@ export class MeatDiffViewer {
 				? this.options.theme.fg("accent", COMMENT_ICON)
 				: " ".repeat(visibleWidth(COMMENT_ICON));
 			const prefix = `${marker}${commentMarker} `;
-			const source = cropHighlightedSource(
-				highlighted.get(index) ??
-					sanitizeTerminalText(stripDiffMarker(line.text)),
+			const sourceText = stripDiffMarker(line.text);
+			const cropped = cropHighlightedSource(
+				highlighted.get(index) ?? sanitizeTerminalText(sourceText),
 				this.horizontalScroll,
 				Math.max(0, width - visibleWidth(prefix)),
 			);
+			const range =
+				selectedLine === undefined
+					? undefined
+					: this.selectionRange(side, selectedLine, visibleWidth(sourceText));
+			const source = range
+				? applySelectionBackground(
+						cropped,
+						range.start - this.horizontalScroll,
+						range.end - this.horizontalScroll,
+						this.options.theme,
+					)
+				: cropped;
 			const value = fit(`${prefix}${source}`, width);
 			return hovered
 				? this.options.theme.bg("selectedBg", pad(value, width))
@@ -602,6 +723,13 @@ export class MeatDiffViewer {
 			this.options.theme,
 			row.left?.number !== undefined && this.hasComment("old", row.left.number),
 			row.left?.number !== undefined && this.isHovered("old", row.left.number),
+			row.left?.number !== undefined
+				? this.selectionRange(
+						"old",
+						row.left.number,
+						visibleWidth(row.left.text),
+					)
+				: undefined,
 		);
 		const right = renderNumbered(
 			row.right,
@@ -614,6 +742,13 @@ export class MeatDiffViewer {
 				this.hasComment("new", row.right.number),
 			row.right?.number !== undefined &&
 				this.isHovered("new", row.right.number),
+			row.right?.number !== undefined
+				? this.selectionRange(
+						"new",
+						row.right.number,
+						visibleWidth(row.right.text),
+					)
+				: undefined,
 		);
 		return `${pad(left, columnWidth)}${divider}${fit(right, columnWidth)}`;
 	}
@@ -651,6 +786,7 @@ export class MeatDiffViewer {
 		this.scroll = 0;
 		this.horizontalScroll = 0;
 		this.collapsed = false;
+		this.clearSelection();
 	}
 
 	private selectFile(delta: number): void {
@@ -663,6 +799,7 @@ export class MeatDiffViewer {
 		this.scroll = 0;
 		this.horizontalScroll = 0;
 		this.collapsed = false;
+		this.clearSelection();
 	}
 
 	private handleMouse(event: MouseEvent): void {
@@ -693,20 +830,236 @@ export class MeatDiffViewer {
 			this.hoverAnchor = this.contentPositionForMouse(row, column);
 			return;
 		}
+		if (event.action === "drag") {
+			// Only a left drag selects; a stray right drag leaves the selection
+			// untouched so a comment cannot destroy it.
+			if (event.button === "left") this.extendSelection(row, column);
+			return;
+		}
+		if (event.action === "release") {
+			if (event.button === "left") this.finishSelection();
+			return;
+		}
 		if (event.action !== "press") return;
 		if (row === 0) {
-			this.handleHeaderClick(column);
+			if (event.button === "left") this.handleHeaderClick(column);
 			return;
 		}
 		if (this.lastSidebarWidth > 0 && column < this.lastSidebarWidth) {
+			if (event.button !== "left") return;
 			const fileRow = row - this.lastBodyStartRow - 2;
 			const fileIndex = this.sidebarScroll + fileRow;
 			if (fileRow >= 0 && fileIndex < this.active.files.length)
 				this.selectFileIndex(fileIndex);
 			return;
 		}
-		const anchor = this.contentPositionForMouse(row, column);
-		if (anchor) this.startCommentAt(anchor);
+		if (event.button === "right") {
+			this.commentFromMouse(row, column);
+			return;
+		}
+		if (event.button === "left") this.beginSelection(row, column);
+	}
+
+	/** Starts a text selection; a press without a drag drops the old one. */
+	private beginSelection(row: number, column: number): void {
+		this.clearSelection();
+		this.dragStart = this.pointForMouse(row, column);
+	}
+
+	private extendSelection(row: number, column: number): void {
+		const start = this.dragStart;
+		if (!start) return;
+		const focus = this.pointForMouse(row, column);
+		if (!focus) return;
+		const cells = this.displayCells();
+		const startIndex = cells.findIndex(
+			(cell) => cell.side === start.side && cell.line === start.line,
+		);
+		const focusIndex = cells.findIndex(
+			(cell) => cell.side === focus.side && cell.line === focus.line,
+		);
+		if (startIndex < 0 || focusIndex < 0) return;
+		const first = Math.min(startIndex, focusIndex);
+		const last = Math.max(startIndex, focusIndex);
+		const forward =
+			startIndex < focusIndex ||
+			(startIndex === focusIndex && start.column <= focus.column);
+		const head = forward ? start : focus;
+		const tail = forward ? focus : start;
+		// In split view a drag inside one pane selects that pane's lines only,
+		// so pulling down the old column never swallows the new one.
+		const range = cells
+			.slice(first, last + 1)
+			.filter((cell) => start.side !== focus.side || cell.side === start.side);
+		if (range.length === 0) return;
+		this.selection = {
+			cells: range,
+			startColumn: head.column,
+			endColumn: tail.column + 1,
+		};
+	}
+
+	/** Drops a selection that never grew past the press position. */
+	private finishSelection(): void {
+		this.dragStart = undefined;
+		if (this.selection && this.selectionSnippet() === "") this.clearSelection();
+	}
+
+	private clearSelection(): void {
+		this.selection = undefined;
+		this.dragStart = undefined;
+	}
+
+	/** Exact selected text, sliced by terminal column so wide chars stay intact. */
+	private selectionSnippet(): string | undefined {
+		const selection = this.selection;
+		if (!selection || selection.cells.length === 0) return undefined;
+		const last = selection.cells.length - 1;
+		return selection.cells
+			.map((cell, index) => {
+				const from = index === 0 ? selection.startColumn : 0;
+				const to =
+					index === last ? selection.endColumn : visibleWidth(cell.text);
+				return sliceByColumn(cell.text, from, Math.max(0, to - from), true);
+			})
+			.join("\n");
+	}
+
+	/** A selection comments under its first line, with the selected text. */
+	private selectionAnchor(): CommentAnchor | undefined {
+		const cell = this.selection?.cells[0];
+		if (!cell) return undefined;
+		const snippet = this.selectionSnippet();
+		if (snippet === undefined) return undefined;
+		return this.makeAnchor(cell.side, cell.line, snippet);
+	}
+
+	/** Right-click: comment the selection, or the line under the cursor. */
+	private commentFromMouse(row: number, column: number): void {
+		const anchor =
+			this.selectionAnchor() ?? this.contentPositionForMouse(row, column);
+		this.startCommentAt(anchor);
+	}
+
+	/** Selected column span on one line, in source columns. */
+	private selectionRange(
+		side: DiffSide,
+		line: number,
+		textWidth: number,
+	): { start: number; end: number } | undefined {
+		const selection = this.selection;
+		if (!selection) return undefined;
+		const index = selection.cells.findIndex(
+			(cell) => cell.side === side && cell.line === line,
+		);
+		if (index < 0) return undefined;
+		const start = index === 0 ? selection.startColumn : 0;
+		const end =
+			index === selection.cells.length - 1 ? selection.endColumn : textWidth;
+		return { start, end: Math.max(start, end) };
+	}
+
+	/** All selectable cells of the current file, in display order. */
+	private displayCells(): SelectionCell[] {
+		const cells: SelectionCell[] = [];
+		if (this.lastLayout === "split") {
+			for (const row of this.visibleSplitRows()) {
+				if (row.kind !== "pair") continue;
+				if (row.left?.number !== undefined)
+					cells.push({
+						side: "old",
+						line: row.left.number,
+						text: row.left.text,
+					});
+				if (row.right?.number !== undefined)
+					cells.push({
+						side: "new",
+						line: row.right.number,
+						text: row.right.text,
+					});
+			}
+			return cells;
+		}
+		const lines = this.selectedLines;
+		for (const [index, line] of lines.entries()) {
+			if (!isUnifiedSourceLine(line)) continue;
+			const side: DiffSide = line.kind === "remove" ? "old" : "new";
+			const number = this.lineNumberForUnified(lines, index, side);
+			if (number === undefined) continue;
+			cells.push({ side, line: number, text: stripDiffMarker(line.text) });
+		}
+		return cells;
+	}
+
+	private visibleSplitRows(): SplitDiffRow[] {
+		return buildSplitRows(this.active, this.selectedFile).filter(
+			(row) => row.kind !== "meta" || showSplitMetadata(row),
+		);
+	}
+
+	private pointForMouse(row: number, column: number): DiffPoint | undefined {
+		if (
+			row < this.lastBodyStartRow ||
+			row >= this.lastBodyStartRow + this.lastBodyHeight
+		)
+			return undefined;
+		const contentColumn =
+			this.lastSidebarWidth > 0 ? column - this.lastSidebarWidth - 3 : column;
+		if (contentColumn < 0 || contentColumn >= this.lastContentWidth)
+			return undefined;
+		return this.pointAt(row - this.lastBodyStartRow, contentColumn);
+	}
+
+	private pointAt(
+		contentRow: number,
+		contentColumn: number,
+	): DiffPoint | undefined {
+		const prefixWidth = this.sourcePrefixWidth();
+		if (this.lastLayout === "split") {
+			const columnWidth = Math.max(
+				1,
+				Math.floor((this.lastContentWidth - 3) / 2),
+			);
+			if (contentColumn >= columnWidth && contentColumn < columnWidth + 3)
+				return undefined;
+			const left = contentColumn < columnWidth;
+			const paneColumn = left ? contentColumn : contentColumn - columnWidth - 3;
+			const row = this.visibleSplitRows()[this.scroll + contentRow - 1];
+			if (!row || row.kind !== "pair") return undefined;
+			const line = left ? row.left : row.right;
+			if (!line?.number) return undefined;
+			return {
+				side: left ? "old" : "new",
+				line: line.number,
+				text: line.text,
+				column: this.sourceColumn(paneColumn, prefixWidth),
+			};
+		}
+		const index = this.scroll + contentRow;
+		const lines = this.selectedLines;
+		const line = lines[index];
+		if (!line || !isUnifiedSourceLine(line)) return undefined;
+		const side: DiffSide = line.kind === "remove" ? "old" : "new";
+		const number = this.lineNumberForUnified(lines, index, side);
+		if (number === undefined) return undefined;
+		return {
+			side,
+			line: number,
+			text: stripDiffMarker(line.text),
+			column: this.sourceColumn(contentColumn, prefixWidth),
+		};
+	}
+
+	/** Converts a column in a rendered pane to a source column. */
+	private sourceColumn(displayColumn: number, prefixWidth: number): number {
+		return Math.max(0, displayColumn - prefixWidth + this.horizontalScroll);
+	}
+
+	/** Rendered width of line number, marker and comment badge before the text. */
+	private sourcePrefixWidth(): number {
+		return this.lastLayout === "split"
+			? this.lineNumberWidth + 5
+			: 1 + visibleWidth(COMMENT_ICON) + 1;
 	}
 
 	private contentPositionForMouse(
@@ -734,9 +1087,7 @@ export class MeatDiffViewer {
 		if (this.lastLayout === "split") {
 			const splitRowIndex = this.scroll + contentRow - 1;
 			if (splitRowIndex < 0) return undefined;
-			const rows = buildSplitRows(this.active, this.selectedFile).filter(
-				(item) => item.kind !== "meta" || showSplitMetadata(item),
-			);
+			const rows = this.visibleSplitRows();
 			const splitRow = rows[splitRowIndex];
 			if (!splitRow || splitRow.kind !== "pair") return undefined;
 			const columnWidth = Math.max(
@@ -886,6 +1237,7 @@ export class MeatDiffViewer {
 			this.layout = this.layout === "split" ? "unified" : "split";
 			this.scroll = 0;
 			this.horizontalScroll = 0;
+			this.clearSelection();
 		}
 	}
 
@@ -895,6 +1247,7 @@ export class MeatDiffViewer {
 		this.scroll = 0;
 		this.horizontalScroll = 0;
 		this.collapsed = false;
+		this.clearSelection();
 	}
 
 	private scrollBy(delta: number): void {
@@ -981,10 +1334,13 @@ export class CommentDialog implements Focusable {
 	invalidate(): void {}
 }
 
+type MouseButton = "left" | "middle" | "right" | "none";
+
 type MouseAction =
 	| "press"
 	| "release"
 	| "move"
+	| "drag"
 	| "wheel-up"
 	| "wheel-down"
 	| "wheel-left"
@@ -992,6 +1348,7 @@ type MouseAction =
 
 interface MouseEvent {
 	action: MouseAction;
+	button: MouseButton;
 	x: number;
 	y: number;
 }
@@ -1007,15 +1364,31 @@ function parseMouseEvent(data: string): MouseEvent | undefined {
 	const wheel = button & 0xc3;
 	const shifted = (button & 4) !== 0;
 	if (wheel === 64)
-		return { action: shifted ? "wheel-left" : "wheel-up", x, y };
+		return {
+			action: shifted ? "wheel-left" : "wheel-up",
+			button: "none",
+			x,
+			y,
+		};
 	if (wheel === 65)
-		return { action: shifted ? "wheel-right" : "wheel-down", x, y };
-	if (wheel === 66) return { action: "wheel-left", x, y };
-	if (wheel === 67) return { action: "wheel-right", x, y };
-	if (match[4] === "m") return { action: "release", x, y };
-	if ((button & 32) !== 0) return { action: "move", x, y };
-	if ((button & 0x23) === 0) return { action: "press", x, y };
-	return undefined;
+		return {
+			action: shifted ? "wheel-right" : "wheel-down",
+			button: "none",
+			x,
+			y,
+		};
+	if (wheel === 66) return { action: "wheel-left", button: "none", x, y };
+	if (wheel === 67) return { action: "wheel-right", button: "none", x, y };
+	// SGR low bits: 0 left, 1 middle, 2 right, 3 no button pressed.
+	const held = button & 3;
+	const name: MouseButton =
+		held === 0 ? "left" : held === 1 ? "middle" : held === 2 ? "right" : "none";
+	if ((button & 32) !== 0)
+		return { action: held === 3 ? "move" : "drag", button: name, x, y };
+	if (match[4] === "m" || held === 3)
+		return { action: "release", button: name, x, y };
+	if (name === "none") return undefined;
+	return { action: "press", button: name, x, y };
 }
 
 function renderNumbered(
@@ -1027,6 +1400,7 @@ function renderNumbered(
 	theme: Theme,
 	commented: boolean,
 	hovered: boolean,
+	selection: { start: number; end: number } | undefined,
 ): string {
 	if (!line) return "";
 	const number =
@@ -1040,11 +1414,19 @@ function renderNumbered(
 		? theme.fg("accent", COMMENT_ICON)
 		: " ".repeat(visibleWidth(COMMENT_ICON));
 	const prefix = `${theme.fg("muted", number)} ${colorText(marker, line.kind, theme)}${commentMarker} `;
-	const source = cropHighlightedSource(
+	const cropped = cropHighlightedSource(
 		highlightedSource ?? colorText(line.text, line.kind, theme),
 		horizontalScroll,
 		Math.max(0, width - visibleWidth(prefix)),
 	);
+	const source = selection
+		? applySelectionBackground(
+				cropped,
+				selection.start - horizontalScroll,
+				selection.end - horizontalScroll,
+				theme,
+			)
+		: cropped;
 	const value = fit(`${prefix}${source}`, width);
 	return hovered
 		? theme.bg("selectedBg", pad(value, width))
@@ -1239,6 +1621,26 @@ function cropHighlightedSource(
 ): string {
 	if (width <= 0) return "";
 	return sliceByColumn(value, offset, width, true);
+}
+
+/**
+ * Paints the selection background over display columns `[start, end)` of an
+ * already cropped line, preserving ANSI styling and wide characters.
+ */
+function applySelectionBackground(
+	text: string,
+	start: number,
+	end: number,
+	theme: Theme,
+): string {
+	const width = visibleWidth(text);
+	const from = clamp(start, 0, width);
+	const to = clamp(end, 0, width);
+	if (to <= from) return text;
+	const before = from > 0 ? sliceByColumn(text, 0, from, true) : "";
+	const middle = sliceByColumn(text, from, to - from, true);
+	const after = to < width ? sliceByColumn(text, to, width - to, true) : "";
+	return `${before}${theme.bg("selectedBg", middle)}${after}`;
 }
 
 function truncateStartToWidth(value: string, width: number): string {

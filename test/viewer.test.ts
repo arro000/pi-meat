@@ -184,6 +184,253 @@ test("keeps the original diff available when reading generation fails", () => {
 	assert.ok(viewer.render(98).some((line) => line.includes("old one")));
 });
 
+test("offers a restart command after a reading diff failure", () => {
+	let starts = 0;
+	const viewer = new MeatDiffViewer({
+		theme,
+		summary: "",
+		originalDiff: diff,
+		modelLabel: "provider/model",
+		startReading: () => starts++,
+		viewportHeight: () => 10,
+		done: () => {},
+	});
+
+	viewer.handleInput("\t");
+	viewer.setReadingError("provider rejected the request (400)");
+
+	const failed = viewer.render(98);
+	assert.ok(failed.some((line) => line.includes("Reading diff failed")));
+	assert.ok(
+		failed.some((line) => line.includes("Press Enter (or R) to restart Meat")),
+	);
+	// The restart hint is advertised in the footer (wide terminals) and help.
+	assert.ok(
+		viewer.render(140).some((line) => line.includes("Enter/R restart Meat")),
+	);
+	viewer.handleInput("?");
+	assert.ok(
+		viewer.render(98).some((line) => line.includes("Enter or R restarts Meat")),
+	);
+	viewer.handleInput("?");
+
+	// Enter restarts from the failure panel.
+	viewer.handleInput("\r");
+	assert.equal(starts, 1);
+	const retried = viewer.render(98);
+	assert.ok(retried.some((line) => line.includes("Meat is processing")));
+	assert.ok(retried.every((line) => !line.includes("Reading diff failed")));
+
+	// A second failure can be restarted again with R, from either mode.
+	viewer.setReadingError("still failing");
+	viewer.handleInput("\t");
+	assert.ok(viewer.render(98).some((line) => line.includes("old one")));
+	viewer.handleInput("R");
+	assert.equal(starts, 2);
+	const restarted = viewer.render(98);
+	assert.ok(restarted.some((line) => line.includes("Meat is processing")));
+	assert.ok(restarted.every((line) => !line.includes("still failing")));
+
+	viewer.setReading(diff, "Recovered");
+	assert.ok(viewer.render(98).some((line) => line.includes("Recovered")));
+});
+
+test("without a startReading hook the failure panel only points at /meat", () => {
+	const viewer = new MeatDiffViewer({
+		theme,
+		summary: "",
+		originalDiff: diff,
+		modelLabel: "provider/model",
+		viewportHeight: () => 10,
+		done: () => {},
+	});
+
+	viewer.handleInput("\t");
+	viewer.setReadingError("provider failed");
+	const failed = viewer.render(98);
+	assert.ok(
+		failed.some((line) =>
+			line.includes("Close the viewer and run /meat again"),
+		),
+	);
+	assert.ok(failed.every((line) => !line.includes("Enter/R restart Meat")));
+});
+
+test("selects diff text with a left drag and comments it with a right click", async () => {
+	const requests: Array<{ anchor: CommentAnchor }> = [];
+	const selectionTheme = {
+		...theme,
+		bg: (color: string, text: string) =>
+			color === "selectedBg" ? `[sel]${text}[/sel]` : text,
+	} as unknown as Theme;
+	const viewer = new MeatDiffViewer({
+		theme: selectionTheme,
+		summary: "Selection",
+		originalDiff: diff,
+		readingDiff: diff,
+		modelLabel: "provider/model",
+		viewportHeight: () => 10,
+		done: () => {},
+		requestComment: async (anchor) => {
+			requests.push({ anchor });
+			return "Selected text is wrong";
+		},
+	});
+
+	// Split layout, no sidebar at this width: the old pane starts after the
+	// 4-column line number, marker and comment badge.
+	const sourceColumn = 4 + 5;
+	const rows = viewer.render(98);
+	const targetRow = rows.findIndex(
+		(line) => line.includes("old one") && line.includes("new one"),
+	);
+	assert.ok(targetRow > 0);
+	const y = targetRow + 1;
+	const fromX = sourceColumn + 1;
+	const toX = fromX + 2;
+
+	viewer.handleInput(`\x1b[<0;${fromX};${y}M`);
+	assert.ok(
+		viewer.render(98).every((line) => !line.includes("[sel]")),
+		"a press alone must not select anything",
+	);
+	viewer.handleInput(`\x1b[<32;${toX};${y}M`);
+	viewer.handleInput(`\x1b[<0;${toX};${y}m`);
+	const selected = viewer.render(98);
+	const selectedRow = selected[targetRow] ?? "";
+	assert.ok(selectedRow.includes("[sel]old[/sel] one"));
+	assert.ok(
+		selectedRow.includes("new one") && !selectedRow.includes("[sel]new"),
+	);
+	assert.ok(
+		selected.some((line) => line.includes("1 line selected")),
+		"the footer reports the selection",
+	);
+
+	// Right-click turns the selection into a comment on its first line.
+	viewer.handleInput(`\x1b[<2;${toX};${y}M`);
+	await new Promise((resolve) => setImmediate(resolve));
+	assert.equal(requests[0]?.anchor.side, "old");
+	assert.equal(requests[0]?.anchor.line, 11);
+	assert.equal(requests[0]?.anchor.snippet, "old");
+	assert.equal(viewer.getComments()[0]?.snippet, "old");
+});
+
+test("selects across lines and keeps the exact selected text", async () => {
+	const requests: Array<{ anchor: CommentAnchor }> = [];
+	const viewer = new MeatDiffViewer({
+		theme,
+		summary: "Multi-line selection",
+		originalDiff: diff,
+		readingDiff: diff,
+		modelLabel: "provider/model",
+		viewportHeight: () => 10,
+		done: () => {},
+		requestComment: async (anchor) => {
+			requests.push({ anchor });
+			return undefined;
+		},
+	});
+
+	const sourceColumn = 4 + 5;
+	const rows = viewer.render(98);
+	const firstRow = rows.findIndex((line) => line.includes("old one"));
+	const lastRow = rows.findIndex((line) => line.includes("old two"));
+	assert.ok(firstRow > 0 && lastRow > firstRow);
+
+	viewer.handleInput(`\x1b[<0;${sourceColumn + 1};${firstRow + 1}M`);
+	viewer.handleInput(`\x1b[<32;${sourceColumn + 3};${lastRow + 1}M`);
+	viewer.handleInput(`\x1b[<0;${sourceColumn + 3};${lastRow + 1}m`);
+
+	viewer.handleInput(`\x1b[<2;${sourceColumn + 3};${lastRow + 1}M`);
+	await new Promise((resolve) => setImmediate(resolve));
+	assert.equal(requests[0]?.anchor.line, 11);
+	assert.equal(requests[0]?.anchor.snippet, "old one\nold");
+});
+
+test("selects text in unified layout too", async () => {
+	const requests: Array<{ anchor: CommentAnchor }> = [];
+	const viewer = new MeatDiffViewer({
+		theme,
+		summary: "Unified selection",
+		originalDiff: diff,
+		readingDiff: diff,
+		modelLabel: "provider/model",
+		viewportHeight: () => 10,
+		done: () => {},
+		requestComment: async (anchor) => {
+			requests.push({ anchor });
+			return undefined;
+		},
+	});
+
+	viewer.handleInput("s");
+	const rows = viewer.render(98);
+	assert.ok(rows.some((line) => line.includes("UNIFIED")));
+	const targetRow = rows.findIndex((line) => line.includes("old one"));
+	assert.ok(targetRow > 0);
+	// Unified prefix is the diff marker plus the comment badge and a space.
+	const fromX = 1 + 2 + 1 + 1;
+	const y = targetRow + 1;
+	viewer.handleInput(`\x1b[<0;${fromX};${y}M`);
+	viewer.handleInput(`\x1b[<32;${fromX + 2};${y}M`);
+	viewer.handleInput(`\x1b[<0;${fromX + 2};${y}m`);
+
+	viewer.handleInput(`\x1b[<2;${fromX + 2};${y}M`);
+	await new Promise((resolve) => setImmediate(resolve));
+	assert.equal(requests[0]?.anchor.side, "old");
+	assert.equal(requests[0]?.anchor.line, 11);
+	assert.equal(requests[0]?.anchor.snippet, "old");
+});
+
+test("right-click comments the line under the cursor without a selection", async () => {
+	const requests: Array<{ anchor: CommentAnchor }> = [];
+	const viewer = new MeatDiffViewer({
+		theme,
+		summary: "Right click only",
+		originalDiff: diff,
+		readingDiff: diff,
+		modelLabel: "provider/model",
+		viewportHeight: () => 10,
+		done: () => {},
+		requestComment: async (anchor) => {
+			requests.push({ anchor });
+			return "Needs a comment";
+		},
+	});
+
+	viewer.render(98);
+	viewer.handleInput("\x1b[<2;10;8M");
+	await new Promise((resolve) => setImmediate(resolve));
+	assert.equal(requests[0]?.anchor.snippet, "keep");
+	assert.equal(viewer.getComments().length, 1);
+});
+
+test("clears the selection before closing on Escape", () => {
+	const actions: string[] = [];
+	const viewer = new MeatDiffViewer({
+		theme,
+		summary: "Escape",
+		originalDiff: diff,
+		readingDiff: diff,
+		modelLabel: "provider/model",
+		viewportHeight: () => 10,
+		done: (action) => actions.push(action),
+	});
+
+	viewer.render(98);
+	viewer.handleInput("\x1b[<0;10;8M");
+	viewer.handleInput("\x1b[<32;13;8M");
+	viewer.handleInput("\x1b[<0;13;8m");
+	assert.ok(viewer.render(98).some((line) => line.includes("1 line selected")));
+
+	viewer.handleInput("\x1b");
+	assert.deepEqual(actions, []);
+	assert.ok(viewer.render(98).every((line) => !line.includes("selected")));
+	viewer.handleInput("\x1b");
+	assert.deepEqual(actions, ["close"]);
+});
+
 test("adds subtle backgrounds to added and removed lines", () => {
 	const backgrounds: string[] = [];
 	const backgroundTheme = {
@@ -331,7 +578,7 @@ test("anchors clicks to the visible split line and edits comments in a dialog", 
 		},
 	});
 	viewer.render(98);
-	viewer.handleInput("\x1b[<0;10;8M");
+	viewer.handleInput("\x1b[<2;10;8M");
 	await new Promise((resolve) => setImmediate(resolve));
 	assert.equal(requests[0]?.anchor.line, 10);
 	assert.equal(requests[0]?.anchor.snippet, "keep");
@@ -348,12 +595,12 @@ test("anchors clicks to the visible split line and edits comments in a dialog", 
 			.some((line) => line.includes("💬") && line.includes("keep")),
 	);
 
-	viewer.handleInput("\x1b[<0;10;8M");
+	viewer.handleInput("\x1b[<2;10;8M");
 	await new Promise((resolve) => setImmediate(resolve));
 	assert.equal(requests[1]?.currentText, "Needs better handling");
 	assert.equal(viewer.getComments()[0]?.text, "Handle the error");
 
-	viewer.handleInput("\x1b[<0;10;8M");
+	viewer.handleInput("\x1b[<2;10;8M");
 	await new Promise((resolve) => setImmediate(resolve));
 	assert.equal(viewer.getComments().length, 0);
 });

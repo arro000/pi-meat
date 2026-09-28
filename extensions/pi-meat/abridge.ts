@@ -3,6 +3,7 @@ import { dirname } from "node:path";
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import { completeSimple } from "@earendil-works/pi-ai/compat";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { withProviderSessionHeaders } from "./attribution.ts";
 import { runBridge } from "./bridge.ts";
 import {
 	artifactPaths,
@@ -19,7 +20,7 @@ import {
 	type MeatResult,
 } from "./protocol.ts";
 
-export const CACHE_VERSION = `bridge-${PROTOCOL_VERSION}-diff-only-v2`;
+const CACHE_VERSION = `bridge-${PROTOCOL_VERSION}-diff-only-v2`;
 
 export type MeatModel = NonNullable<ExtensionContext["model"]>;
 
@@ -33,7 +34,7 @@ export interface AbridgeTarget {
 	cacheRoot: string;
 }
 
-export function meatModelLabel(model: MeatModel): string {
+function meatModelLabel(model: MeatModel): string {
 	return `${model.provider}/${model.id}`;
 }
 
@@ -83,6 +84,19 @@ export interface GenerateAbridgedOptions {
 	onProgress?: (message: string) => void;
 }
 
+/**
+ * Session id for the nested call. Pi's own id keeps session-affinity caching and
+ * provider attribution consistent with Pi's requests; a random id is the
+ * fallback when the session is not inspectable.
+ */
+function sessionIdFor(ctx: ExtensionContext, fallback: string): string {
+	try {
+		return ctx.sessionManager.getSessionId() || fallback;
+	} catch {
+		return fallback;
+	}
+}
+
 /** Abridges one diff through the Go bridge and atomically publishes it. */
 export async function generateAbridged(
 	options: GenerateAbridgedOptions,
@@ -93,6 +107,8 @@ export async function generateAbridged(
 	await secureCacheTree(dirname(target.cacheRoot));
 
 	const nestedSessionId = randomUUID();
+	const sessionId = sessionIdFor(ctx, nestedSessionId);
+	const headers = withProviderSessionHeaders(model, auth.headers, sessionId);
 	const result = await runBridge({
 		diff,
 		signal,
@@ -104,13 +120,13 @@ export async function generateAbridged(
 				{ systemPrompt: request.system, ...meatContext },
 				{
 					apiKey: auth.apiKey,
-					headers: auth.headers,
+					headers,
 					env: auth.env,
 					signal,
 					reasoning:
 						target.thinkingLevel === "off" ? undefined : target.thinkingLevel,
 					cacheRetention: "short",
-					sessionId: nestedSessionId,
+					sessionId,
 				},
 			);
 			if (response.stopReason === "error")

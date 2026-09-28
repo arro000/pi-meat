@@ -64,7 +64,7 @@ Pi packages run with your full user permissions. Review the source and [security
 3. Run `/meat-settings` to set Meat's persistent model, thinking level, and startup mode.
 4. Run `/meat` and choose what to examine and what to do. The original diff opens immediately.
 5. In `default` startup mode, Meat starts immediately. In `on-demand` mode, press `Tab` to open Reading and `Enter` to start Meat.
-6. Click a code line (or press `c`), type the comment in the overlaid dialog, and press `Enter`; click a marked line to read or edit its comment, then press `r` to send comments with the review request to Pi.
+6. Select code with a left drag and press the right mouse button to comment the selection — or the line under the cursor; type the comment in the overlaid dialog and press `Enter`. Click a commented line with the right button to read or edit its comment, then press `r` to send comments with the review request to Pi.
 
 ## Choose changes
 
@@ -105,15 +105,21 @@ pi-meat accepts one revision, range, or named selector per run. It must run insi
 | `s` | Toggle side-by-side / unified layout |
 | `Space` | Fold / unfold the current file |
 | `Tab` | Toggle reading / original diff; the status line below the modes remains visible throughout generation |
-| `Enter` | Start Meat from the Reading view when startup mode is `on-demand` |
-| `c` | Add or edit the selected line's comment (`Enter` saves, empty input deletes, `Esc` cancels) |
+| `Enter` | Start Meat from the Reading view when startup mode is `on-demand`; restart Meat after a failure |
+| `R` | Restart Meat and rebuild the reading diff after a failure, from either view |
+| `c` | Add or edit the comment of the line at the top of the viewport (`Enter` saves, empty input deletes, `Esc` cancels) |
 | `r` | Close the viewer and ask Pi for a verified review, including comments |
 | `?` | Toggle help |
-| `q` / `Esc` | Close |
-| Mouse hover / click / wheel | Highlight a code line, select a sidebar file, add/edit a line comment, or scroll the diff |
+| `q` | Close |
+| `Esc` | Clear the text selection, or close the viewer when nothing is selected |
+| Left drag | Select diff text; the selection is shown with a background and counted in the status line |
+| Right click | Comment the selection, or the single line under the cursor when nothing is selected; clicking a commented line edits it |
+| Mouse hover / click / wheel | Highlight a code line, select a sidebar file, or scroll the diff |
 | Horizontal wheel / `Shift` + wheel | Scroll horizontally when supported by the terminal |
 
-Wide terminals show a file sidebar and old/new panes. Commented files show a `💬` count, and commented lines show `💬` beside the diff marker. Medium terminals keep full-width side-by-side panes; narrow terminals switch to unified layout. Hold `Shift` for terminal-native text selection while mouse reporting is active.
+Wide terminals show a file sidebar and old/new panes. Commented files show a `💬` count, and commented lines show `💬` beside the diff marker. Medium terminals keep full-width side-by-side panes; narrow terminals switch to unified layout. The footer always spells out `drag select · right-click comment`, and `?` repeats it with the full gesture list.
+
+A right-clicked selection is anchored on its first line and stores the exact selected text, so a review comment can quote a fragment or several lines. In side-by-side layout a drag inside one pane selects that pane only. Selection is held in pi-meat, not in the terminal clipboard: hold `Shift` while dragging to use the terminal's own text selection and system clipboard instead.
 
 ## Model settings
 
@@ -125,6 +131,8 @@ Startup mode is `default` unless changed:
 - `on-demand`: the original diff opens without starting Meat; switch to Reading and press `Enter` when you want to generate it.
 
 The viewer always shows Meat's state directly below the Reading/Original choices. When the reading diff is ready, `✨` appears beside Reading. Cached reading diffs are ready immediately and do not require another run.
+
+If generation fails, the viewer keeps the original diff, shows the failure below the mode choices, and offers a restart: press `Enter` or `R` to rebuild the reading diff without leaving the viewer or reopening `/meat`. The original diff stays on screen while the new attempt runs, and the retry reuses the same revision, model, and thinking level. When no restart is possible, the panel points back to `/meat` instead.
 
 The same dialog exposes **Background pre-processing**. When it is on, pi-meat watches for new commits and pre-builds the reading diff in the background, so `/meat HEAD` opens from the cache without waiting for the model. Detection uses Pi events for commits made by the agent or by `!` commands, plus a backed-off `git rev-parse HEAD` poll for commits made outside Pi. Only committed revisions are pre-processed, never staged or unstaged changes.
 
@@ -154,6 +162,7 @@ Set `PI_MEAT_CACHE` to choose another cache directory. See [privacy and data flo
 | Configured model is unavailable | Run `/meat-settings` and select an authenticated model. |
 | Bridge startup or Go module error | Confirm Go 1.24.13+ is installed and can download the pinned modules. The first run may be slower. |
 | Stale reading diff | Run the same selector with `--fresh`. |
+| Reading diff generation failed | Press `Enter` or `R` in the viewer to retry. Use `--fresh` for a new cache entry if the failure persists. |
 | Background pre-processing does not trigger | Check that the toggle is on in `/meat-settings`, that a model is available, and that Pi is idle. It never runs outside a Git repository. |
 
 For unresolved problems, follow the [support guide](SUPPORT.md).
